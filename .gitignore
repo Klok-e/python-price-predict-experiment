@@ -1,0 +1,4 @@
+venv/
+spot/
+darts_logs/
+lightning_logs/
