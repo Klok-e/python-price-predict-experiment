@@ -1,0 +1,1541 @@
+obs length = 24
+Training with gamma=0.8, ent_coef=0.005, gae_lambda=0.9
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -8.54    |
+| time/              |          |
+|    fps             | 14       |
+|    iterations      | 1        |
+|    time_elapsed    | 136      |
+|    total_timesteps | 2048     |
+---------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -4.86       |
+| time/                   |             |
+|    fps                  | 14          |
+|    iterations           | 2           |
+|    time_elapsed         | 276         |
+|    total_timesteps      | 4096        |
+| train/                  |             |
+|    approx_kl            | 0.008868343 |
+|    clip_fraction        | 0.0119      |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.09       |
+|    explained_variance   | -1.08       |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.0102     |
+|    n_updates            | 10          |
+|    policy_gradient_loss | -0.00263    |
+|    value_loss           | 0.014       |
+-----------------------------------------
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 512        |
+|    ep_rew_mean          | -5.14      |
+| time/                   |            |
+|    fps                  | 14         |
+|    iterations           | 3          |
+|    time_elapsed         | 416        |
+|    total_timesteps      | 6144       |
+| train/                  |            |
+|    approx_kl            | 0.00950728 |
+|    clip_fraction        | 0.0684     |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -1.07      |
+|    explained_variance   | 0.017      |
+|    learning_rate        | 0.0003     |
+|    loss                 | 0.00836    |
+|    n_updates            | 20         |
+|    policy_gradient_loss | -0.00603   |
+|    value_loss           | 0.179      |
+----------------------------------------
+Mean reward: -4.212225416729345
+Training with gamma=0.8, ent_coef=0.005, gae_lambda=0.92
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -8.82    |
+| time/              |          |
+|    fps             | 14       |
+|    iterations      | 1        |
+|    time_elapsed    | 138      |
+|    total_timesteps | 2048     |
+---------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -3.78        |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 2            |
+|    time_elapsed         | 276          |
+|    total_timesteps      | 4096         |
+| train/                  |              |
+|    approx_kl            | 0.0060528885 |
+|    clip_fraction        | 0.0622       |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.09        |
+|    explained_variance   | -0.538       |
+|    learning_rate        | 0.0003       |
+|    loss                 | -0.0257      |
+|    n_updates            | 10           |
+|    policy_gradient_loss | -0.0134      |
+|    value_loss           | 0.0116       |
+------------------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -4.86        |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 3            |
+|    time_elapsed         | 416          |
+|    total_timesteps      | 6144         |
+| train/                  |              |
+|    approx_kl            | 0.0012853302 |
+|    clip_fraction        | 0.000684     |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.09        |
+|    explained_variance   | 0.0342       |
+|    learning_rate        | 0.0003       |
+|    loss                 | 0.0277       |
+|    n_updates            | 20           |
+|    policy_gradient_loss | -0.00286     |
+|    value_loss           | 0.244        |
+------------------------------------------
+Mean reward: -3.9818194412433385
+Training with gamma=0.8, ent_coef=0.005, gae_lambda=0.95
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -8.5     |
+| time/              |          |
+|    fps             | 14       |
+|    iterations      | 1        |
+|    time_elapsed    | 141      |
+|    total_timesteps | 2048     |
+---------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -4.89        |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 2            |
+|    time_elapsed         | 282          |
+|    total_timesteps      | 4096         |
+| train/                  |              |
+|    approx_kl            | 0.0062584607 |
+|    clip_fraction        | 0.0239       |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.09        |
+|    explained_variance   | -1.34        |
+|    learning_rate        | 0.0003       |
+|    loss                 | -0.0288      |
+|    n_updates            | 10           |
+|    policy_gradient_loss | -0.0059      |
+|    value_loss           | 0.0181       |
+------------------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -5.59        |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 3            |
+|    time_elapsed         | 420          |
+|    total_timesteps      | 6144         |
+| train/                  |              |
+|    approx_kl            | 0.0060573653 |
+|    clip_fraction        | 0.0331       |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.08        |
+|    explained_variance   | 0.0204       |
+|    learning_rate        | 0.0003       |
+|    loss                 | 0.297        |
+|    n_updates            | 20           |
+|    policy_gradient_loss | -0.00427     |
+|    value_loss           | 0.174        |
+------------------------------------------
+Mean reward: -4.063546385573676
+Training with gamma=0.8, ent_coef=0.01, gae_lambda=0.9
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -7.97    |
+| time/              |          |
+|    fps             | 11       |
+|    iterations      | 1        |
+|    time_elapsed    | 185      |
+|    total_timesteps | 2048     |
+---------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -3.38       |
+| time/                   |             |
+|    fps                  | 10          |
+|    iterations           | 2           |
+|    time_elapsed         | 375         |
+|    total_timesteps      | 4096        |
+| train/                  |             |
+|    approx_kl            | 0.017518759 |
+|    clip_fraction        | 0.136       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.09       |
+|    explained_variance   | -6.58       |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.0286     |
+|    n_updates            | 10          |
+|    policy_gradient_loss | -0.00706    |
+|    value_loss           | 0.0238      |
+-----------------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -4.24        |
+| time/                   |              |
+|    fps                  | 11           |
+|    iterations           | 3            |
+|    time_elapsed         | 554          |
+|    total_timesteps      | 6144         |
+| train/                  |              |
+|    approx_kl            | 0.0045215175 |
+|    clip_fraction        | 0.045        |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.08        |
+|    explained_variance   | -0.0084      |
+|    learning_rate        | 0.0003       |
+|    loss                 | 0.000877     |
+|    n_updates            | 20           |
+|    policy_gradient_loss | -0.0044      |
+|    value_loss           | 0.298        |
+------------------------------------------
+Mean reward: -4.780887499983313
+Training with gamma=0.8, ent_coef=0.01, gae_lambda=0.92
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -6.97    |
+| time/              |          |
+|    fps             | 14       |
+|    iterations      | 1        |
+|    time_elapsed    | 137      |
+|    total_timesteps | 2048     |
+---------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -1.1        |
+| time/                   |             |
+|    fps                  | 14          |
+|    iterations           | 2           |
+|    time_elapsed         | 273         |
+|    total_timesteps      | 4096        |
+| train/                  |             |
+|    approx_kl            | 0.005597963 |
+|    clip_fraction        | 0.032       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.09       |
+|    explained_variance   | -0.348      |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.0375     |
+|    n_updates            | 10          |
+|    policy_gradient_loss | -0.00708    |
+|    value_loss           | 0.0147      |
+-----------------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -3.14        |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 3            |
+|    time_elapsed         | 411          |
+|    total_timesteps      | 6144         |
+| train/                  |              |
+|    approx_kl            | 0.0054392666 |
+|    clip_fraction        | 0.0479       |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.08        |
+|    explained_variance   | 0.0474       |
+|    learning_rate        | 0.0003       |
+|    loss                 | 0.0226       |
+|    n_updates            | 20           |
+|    policy_gradient_loss | -0.0055      |
+|    value_loss           | 0.594        |
+------------------------------------------
+Mean reward: -4.246649847279636
+Training with gamma=0.8, ent_coef=0.01, gae_lambda=0.95
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -7.6     |
+| time/              |          |
+|    fps             | 14       |
+|    iterations      | 1        |
+|    time_elapsed    | 145      |
+|    total_timesteps | 2048     |
+---------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -5.56       |
+| time/                   |             |
+|    fps                  | 14          |
+|    iterations           | 2           |
+|    time_elapsed         | 284         |
+|    total_timesteps      | 4096        |
+| train/                  |             |
+|    approx_kl            | 0.011247656 |
+|    clip_fraction        | 0.0779      |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.09       |
+|    explained_variance   | -0.307      |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.0276     |
+|    n_updates            | 10          |
+|    policy_gradient_loss | -0.00865    |
+|    value_loss           | 0.014       |
+-----------------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -6.1         |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 3            |
+|    time_elapsed         | 423          |
+|    total_timesteps      | 6144         |
+| train/                  |              |
+|    approx_kl            | 0.0058714906 |
+|    clip_fraction        | 0.00986      |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.08        |
+|    explained_variance   | 0.0596       |
+|    learning_rate        | 0.0003       |
+|    loss                 | 0.102        |
+|    n_updates            | 20           |
+|    policy_gradient_loss | -0.00488     |
+|    value_loss           | 0.181        |
+------------------------------------------
+Mean reward: -3.9563058625178775
+Training with gamma=0.8, ent_coef=0.02, gae_lambda=0.9
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -9.03    |
+| time/              |          |
+|    fps             | 14       |
+|    iterations      | 1        |
+|    time_elapsed    | 138      |
+|    total_timesteps | 2048     |
+---------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -4.83       |
+| time/                   |             |
+|    fps                  | 14          |
+|    iterations           | 2           |
+|    time_elapsed         | 277         |
+|    total_timesteps      | 4096        |
+| train/                  |             |
+|    approx_kl            | 0.007646013 |
+|    clip_fraction        | 0.0666      |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.09       |
+|    explained_variance   | -0.131      |
+|    learning_rate        | 0.0003      |
+|    loss                 | 0.000621    |
+|    n_updates            | 10          |
+|    policy_gradient_loss | -0.00742    |
+|    value_loss           | 0.0126      |
+-----------------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -5.13        |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 3            |
+|    time_elapsed         | 419          |
+|    total_timesteps      | 6144         |
+| train/                  |              |
+|    approx_kl            | 0.0065617757 |
+|    clip_fraction        | 0.00869      |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.08        |
+|    explained_variance   | 0.0584       |
+|    learning_rate        | 0.0003       |
+|    loss                 | 0.00814      |
+|    n_updates            | 20           |
+|    policy_gradient_loss | -0.00466     |
+|    value_loss           | 0.155        |
+------------------------------------------
+Mean reward: -4.195062597275312
+Training with gamma=0.8, ent_coef=0.02, gae_lambda=0.92
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -8.43    |
+| time/              |          |
+|    fps             | 14       |
+|    iterations      | 1        |
+|    time_elapsed    | 140      |
+|    total_timesteps | 2048     |
+---------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -2.51       |
+| time/                   |             |
+|    fps                  | 14          |
+|    iterations           | 2           |
+|    time_elapsed         | 281         |
+|    total_timesteps      | 4096        |
+| train/                  |             |
+|    approx_kl            | 0.008362977 |
+|    clip_fraction        | 0.094       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.09       |
+|    explained_variance   | -0.0382     |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.0488     |
+|    n_updates            | 10          |
+|    policy_gradient_loss | -0.0116     |
+|    value_loss           | 0.0143      |
+-----------------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -3.25       |
+| time/                   |             |
+|    fps                  | 14          |
+|    iterations           | 3           |
+|    time_elapsed         | 421         |
+|    total_timesteps      | 6144        |
+| train/                  |             |
+|    approx_kl            | 0.008814998 |
+|    clip_fraction        | 0.0441      |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.07       |
+|    explained_variance   | 0.0386      |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.00782    |
+|    n_updates            | 20          |
+|    policy_gradient_loss | -0.00635    |
+|    value_loss           | 0.346       |
+-----------------------------------------
+Mean reward: -3.578895312637475
+Training with gamma=0.8, ent_coef=0.02, gae_lambda=0.95
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -7.04    |
+| time/              |          |
+|    fps             | 14       |
+|    iterations      | 1        |
+|    time_elapsed    | 139      |
+|    total_timesteps | 2048     |
+---------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -4.96       |
+| time/                   |             |
+|    fps                  | 14          |
+|    iterations           | 2           |
+|    time_elapsed         | 280         |
+|    total_timesteps      | 4096        |
+| train/                  |             |
+|    approx_kl            | 0.013211841 |
+|    clip_fraction        | 0.112       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.09       |
+|    explained_variance   | -1.81       |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.0394     |
+|    n_updates            | 10          |
+|    policy_gradient_loss | -0.005      |
+|    value_loss           | 0.016       |
+-----------------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -5.04       |
+| time/                   |             |
+|    fps                  | 14          |
+|    iterations           | 3           |
+|    time_elapsed         | 422         |
+|    total_timesteps      | 6144        |
+| train/                  |             |
+|    approx_kl            | 0.005834213 |
+|    clip_fraction        | 0.0148      |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.07       |
+|    explained_variance   | 0.000489    |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.0136     |
+|    n_updates            | 20          |
+|    policy_gradient_loss | -0.00456    |
+|    value_loss           | 0.216       |
+-----------------------------------------
+Mean reward: -4.268098770243221
+Training with gamma=0.9, ent_coef=0.005, gae_lambda=0.9
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -7.46    |
+| time/              |          |
+|    fps             | 14       |
+|    iterations      | 1        |
+|    time_elapsed    | 141      |
+|    total_timesteps | 2048     |
+---------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -3.74        |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 2            |
+|    time_elapsed         | 282          |
+|    total_timesteps      | 4096         |
+| train/                  |              |
+|    approx_kl            | 0.0068195146 |
+|    clip_fraction        | 0.0851       |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.09        |
+|    explained_variance   | -0.431       |
+|    learning_rate        | 0.0003       |
+|    loss                 | 0.02         |
+|    n_updates            | 10           |
+|    policy_gradient_loss | -0.012       |
+|    value_loss           | 0.0179       |
+------------------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -4.11        |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 3            |
+|    time_elapsed         | 425          |
+|    total_timesteps      | 6144         |
+| train/                  |              |
+|    approx_kl            | 0.0025395672 |
+|    clip_fraction        | 0.000684     |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.09        |
+|    explained_variance   | -0.00933     |
+|    learning_rate        | 0.0003       |
+|    loss                 | 0.049        |
+|    n_updates            | 20           |
+|    policy_gradient_loss | -0.00243     |
+|    value_loss           | 0.249        |
+------------------------------------------
+Mean reward: -4.908987924460648
+Training with gamma=0.9, ent_coef=0.005, gae_lambda=0.92
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -8.82    |
+| time/              |          |
+|    fps             | 14       |
+|    iterations      | 1        |
+|    time_elapsed    | 142      |
+|    total_timesteps | 2048     |
+---------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -3.27       |
+| time/                   |             |
+|    fps                  | 14          |
+|    iterations           | 2           |
+|    time_elapsed         | 283         |
+|    total_timesteps      | 4096        |
+| train/                  |             |
+|    approx_kl            | 0.009137131 |
+|    clip_fraction        | 0.0504      |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.09       |
+|    explained_variance   | -0.273      |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.0267     |
+|    n_updates            | 10          |
+|    policy_gradient_loss | -0.00812    |
+|    value_loss           | 0.0181      |
+-----------------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -4.4         |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 3            |
+|    time_elapsed         | 424          |
+|    total_timesteps      | 6144         |
+| train/                  |              |
+|    approx_kl            | 0.0068978467 |
+|    clip_fraction        | 0.00903      |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.07        |
+|    explained_variance   | 0.00906      |
+|    learning_rate        | 0.0003       |
+|    loss                 | 0.119        |
+|    n_updates            | 20           |
+|    policy_gradient_loss | -0.00273     |
+|    value_loss           | 0.312        |
+------------------------------------------
+Mean reward: -4.123376479726785
+Training with gamma=0.9, ent_coef=0.005, gae_lambda=0.95
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -7.39    |
+| time/              |          |
+|    fps             | 14       |
+|    iterations      | 1        |
+|    time_elapsed    | 139      |
+|    total_timesteps | 2048     |
+---------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -3.25        |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 2            |
+|    time_elapsed         | 280          |
+|    total_timesteps      | 4096         |
+| train/                  |              |
+|    approx_kl            | 0.0066466965 |
+|    clip_fraction        | 0.0675       |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.09        |
+|    explained_variance   | -0.0497      |
+|    learning_rate        | 0.0003       |
+|    loss                 | -0.00579     |
+|    n_updates            | 10           |
+|    policy_gradient_loss | -0.00705     |
+|    value_loss           | 0.0272       |
+------------------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -4.48        |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 3            |
+|    time_elapsed         | 421          |
+|    total_timesteps      | 6144         |
+| train/                  |              |
+|    approx_kl            | 0.0064509027 |
+|    clip_fraction        | 0.0225       |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.08        |
+|    explained_variance   | 0.0455       |
+|    learning_rate        | 0.0003       |
+|    loss                 | 0.11         |
+|    n_updates            | 20           |
+|    policy_gradient_loss | -0.00546     |
+|    value_loss           | 0.498        |
+------------------------------------------
+Mean reward: -4.242164017789699
+Training with gamma=0.9, ent_coef=0.01, gae_lambda=0.9
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -7.42    |
+| time/              |          |
+|    fps             | 14       |
+|    iterations      | 1        |
+|    time_elapsed    | 139      |
+|    total_timesteps | 2048     |
+---------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -4.47       |
+| time/                   |             |
+|    fps                  | 14          |
+|    iterations           | 2           |
+|    time_elapsed         | 275         |
+|    total_timesteps      | 4096        |
+| train/                  |             |
+|    approx_kl            | 0.007112524 |
+|    clip_fraction        | 0.0856      |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.09       |
+|    explained_variance   | -0.0432     |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.0394     |
+|    n_updates            | 10          |
+|    policy_gradient_loss | -0.0109     |
+|    value_loss           | 0.0221      |
+-----------------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -5.17        |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 3            |
+|    time_elapsed         | 412          |
+|    total_timesteps      | 6144         |
+| train/                  |              |
+|    approx_kl            | 0.0067940415 |
+|    clip_fraction        | 0.0136       |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.08        |
+|    explained_variance   | 0.0228       |
+|    learning_rate        | 0.0003       |
+|    loss                 | 0.113        |
+|    n_updates            | 20           |
+|    policy_gradient_loss | -0.00457     |
+|    value_loss           | 0.184        |
+------------------------------------------
+Mean reward: -3.6241136627958546
+Training with gamma=0.9, ent_coef=0.01, gae_lambda=0.92
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -7.58    |
+| time/              |          |
+|    fps             | 14       |
+|    iterations      | 1        |
+|    time_elapsed    | 138      |
+|    total_timesteps | 2048     |
+---------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -4.15        |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 2            |
+|    time_elapsed         | 275          |
+|    total_timesteps      | 4096         |
+| train/                  |              |
+|    approx_kl            | 0.0054229046 |
+|    clip_fraction        | 0.0366       |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.09        |
+|    explained_variance   | -0.191       |
+|    learning_rate        | 0.0003       |
+|    loss                 | -0.0029      |
+|    n_updates            | 10           |
+|    policy_gradient_loss | -0.0051      |
+|    value_loss           | 0.0288       |
+------------------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -4.93        |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 3            |
+|    time_elapsed         | 413          |
+|    total_timesteps      | 6144         |
+| train/                  |              |
+|    approx_kl            | 0.0013229207 |
+|    clip_fraction        | 0.00176      |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.09        |
+|    explained_variance   | 0.0192       |
+|    learning_rate        | 0.0003       |
+|    loss                 | 0.0183       |
+|    n_updates            | 20           |
+|    policy_gradient_loss | -0.00419     |
+|    value_loss           | 0.28         |
+------------------------------------------
+Mean reward: -5.421498138527647
+Training with gamma=0.9, ent_coef=0.01, gae_lambda=0.95
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -7.56    |
+| time/              |          |
+|    fps             | 14       |
+|    iterations      | 1        |
+|    time_elapsed    | 139      |
+|    total_timesteps | 2048     |
+---------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -4.91        |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 2            |
+|    time_elapsed         | 281          |
+|    total_timesteps      | 4096         |
+| train/                  |              |
+|    approx_kl            | 0.0049209674 |
+|    clip_fraction        | 0.0161       |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.1         |
+|    explained_variance   | -0.771       |
+|    learning_rate        | 0.0003       |
+|    loss                 | 0.00314      |
+|    n_updates            | 10           |
+|    policy_gradient_loss | -0.00331     |
+|    value_loss           | 0.0308       |
+------------------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -5.38        |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 3            |
+|    time_elapsed         | 425          |
+|    total_timesteps      | 6144         |
+| train/                  |              |
+|    approx_kl            | 0.0054549403 |
+|    clip_fraction        | 0.0479       |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.09        |
+|    explained_variance   | 0.0518       |
+|    learning_rate        | 0.0003       |
+|    loss                 | 0.00334      |
+|    n_updates            | 20           |
+|    policy_gradient_loss | -0.00829     |
+|    value_loss           | 0.501        |
+------------------------------------------
+Mean reward: -4.140755899513705
+Training with gamma=0.9, ent_coef=0.02, gae_lambda=0.9
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -8.23    |
+| time/              |          |
+|    fps             | 11       |
+|    iterations      | 1        |
+|    time_elapsed    | 183      |
+|    total_timesteps | 2048     |
+---------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -3.56       |
+| time/                   |             |
+|    fps                  | 11          |
+|    iterations           | 2           |
+|    time_elapsed         | 369         |
+|    total_timesteps      | 4096        |
+| train/                  |             |
+|    approx_kl            | 0.007652907 |
+|    clip_fraction        | 0.0664      |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.09       |
+|    explained_variance   | -0.0376     |
+|    learning_rate        | 0.0003      |
+|    loss                 | 0.00618     |
+|    n_updates            | 10          |
+|    policy_gradient_loss | -0.0073     |
+|    value_loss           | 0.0196      |
+-----------------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -4.63       |
+| time/                   |             |
+|    fps                  | 11          |
+|    iterations           | 3           |
+|    time_elapsed         | 555         |
+|    total_timesteps      | 6144        |
+| train/                  |             |
+|    approx_kl            | 0.004140027 |
+|    clip_fraction        | 0.000781    |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.09       |
+|    explained_variance   | 0.0111      |
+|    learning_rate        | 0.0003      |
+|    loss                 | 0.147       |
+|    n_updates            | 20          |
+|    policy_gradient_loss | -0.00176    |
+|    value_loss           | 0.3         |
+-----------------------------------------
+Mean reward: -4.358040038485791
+Training with gamma=0.9, ent_coef=0.02, gae_lambda=0.92
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -8.27    |
+| time/              |          |
+|    fps             | 14       |
+|    iterations      | 1        |
+|    time_elapsed    | 143      |
+|    total_timesteps | 2048     |
+---------------------------------
+---------------------------------------
+| rollout/                |           |
+|    ep_len_mean          | 512       |
+|    ep_rew_mean          | -2.66     |
+| time/                   |           |
+|    fps                  | 13        |
+|    iterations           | 2         |
+|    time_elapsed         | 294       |
+|    total_timesteps      | 4096      |
+| train/                  |           |
+|    approx_kl            | 0.0075672 |
+|    clip_fraction        | 0.0784    |
+|    clip_range           | 0.2       |
+|    entropy_loss         | -1.09     |
+|    explained_variance   | -0.368    |
+|    learning_rate        | 0.0003    |
+|    loss                 | -0.0244   |
+|    n_updates            | 10        |
+|    policy_gradient_loss | -0.00732  |
+|    value_loss           | 0.0248    |
+---------------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -3.64        |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 3            |
+|    time_elapsed         | 436          |
+|    total_timesteps      | 6144         |
+| train/                  |              |
+|    approx_kl            | 0.0060026688 |
+|    clip_fraction        | 0.00747      |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.08        |
+|    explained_variance   | 0.0418       |
+|    learning_rate        | 0.0003       |
+|    loss                 | 0.127        |
+|    n_updates            | 20           |
+|    policy_gradient_loss | -0.00502     |
+|    value_loss           | 0.469        |
+------------------------------------------
+Mean reward: -4.3374812978869794
+Training with gamma=0.9, ent_coef=0.02, gae_lambda=0.95
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -7.65    |
+| time/              |          |
+|    fps             | 15       |
+|    iterations      | 1        |
+|    time_elapsed    | 132      |
+|    total_timesteps | 2048     |
+---------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -2.8         |
+| time/                   |              |
+|    fps                  | 15           |
+|    iterations           | 2            |
+|    time_elapsed         | 270          |
+|    total_timesteps      | 4096         |
+| train/                  |              |
+|    approx_kl            | 0.0069375555 |
+|    clip_fraction        | 0.0175       |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.09        |
+|    explained_variance   | -0.69        |
+|    learning_rate        | 0.0003       |
+|    loss                 | -0.000501    |
+|    n_updates            | 10           |
+|    policy_gradient_loss | -0.00369     |
+|    value_loss           | 0.0261       |
+------------------------------------------
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 512        |
+|    ep_rew_mean          | -3.58      |
+| time/                   |            |
+|    fps                  | 15         |
+|    iterations           | 3          |
+|    time_elapsed         | 406        |
+|    total_timesteps      | 6144       |
+| train/                  |            |
+|    approx_kl            | 0.00621703 |
+|    clip_fraction        | 0.0414     |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -1.08      |
+|    explained_variance   | 0.0531     |
+|    learning_rate        | 0.0003     |
+|    loss                 | 0.11       |
+|    n_updates            | 20         |
+|    policy_gradient_loss | -0.00526   |
+|    value_loss           | 0.55       |
+----------------------------------------
+Mean reward: -4.13786230532622
+Training with gamma=0.95, ent_coef=0.005, gae_lambda=0.9
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -7.02    |
+| time/              |          |
+|    fps             | 11       |
+|    iterations      | 1        |
+|    time_elapsed    | 171      |
+|    total_timesteps | 2048     |
+---------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -2.58       |
+| time/                   |             |
+|    fps                  | 11          |
+|    iterations           | 2           |
+|    time_elapsed         | 358         |
+|    total_timesteps      | 4096        |
+| train/                  |             |
+|    approx_kl            | 0.007600986 |
+|    clip_fraction        | 0.0847      |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.09       |
+|    explained_variance   | -0.0162     |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.00717    |
+|    n_updates            | 10          |
+|    policy_gradient_loss | -0.00898    |
+|    value_loss           | 0.0314      |
+-----------------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -3.6         |
+| time/                   |              |
+|    fps                  | 11           |
+|    iterations           | 3            |
+|    time_elapsed         | 546          |
+|    total_timesteps      | 6144         |
+| train/                  |              |
+|    approx_kl            | 0.0061727236 |
+|    clip_fraction        | 0.026        |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.08        |
+|    explained_variance   | 0.0397       |
+|    learning_rate        | 0.0003       |
+|    loss                 | 0.0654       |
+|    n_updates            | 20           |
+|    policy_gradient_loss | -0.0045      |
+|    value_loss           | 0.421        |
+------------------------------------------
+Mean reward: -4.876230976652982
+Training with gamma=0.95, ent_coef=0.005, gae_lambda=0.92
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -8.11    |
+| time/              |          |
+|    fps             | 14       |
+|    iterations      | 1        |
+|    time_elapsed    | 142      |
+|    total_timesteps | 2048     |
+---------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -3.1         |
+| time/                   |              |
+|    fps                  | 14           |
+|    iterations           | 2            |
+|    time_elapsed         | 284          |
+|    total_timesteps      | 4096         |
+| train/                  |              |
+|    approx_kl            | 0.0070218192 |
+|    clip_fraction        | 0.0613       |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.09        |
+|    explained_variance   | -0.00787     |
+|    learning_rate        | 0.0003       |
+|    loss                 | -0.0319      |
+|    n_updates            | 10           |
+|    policy_gradient_loss | -0.00612     |
+|    value_loss           | 0.0339       |
+------------------------------------------
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 512        |
+|    ep_rew_mean          | -4.21      |
+| time/                   |            |
+|    fps                  | 14         |
+|    iterations           | 3          |
+|    time_elapsed         | 425        |
+|    total_timesteps      | 6144       |
+| train/                  |            |
+|    approx_kl            | 0.00433296 |
+|    clip_fraction        | 0.00176    |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -1.09      |
+|    explained_variance   | 3.11e-05   |
+|    learning_rate        | 0.0003     |
+|    loss                 | 0.412      |
+|    n_updates            | 20         |
+|    policy_gradient_loss | -0.00325   |
+|    value_loss           | 0.466      |
+----------------------------------------
+Mean reward: -4.953995351228764
+Training with gamma=0.95, ent_coef=0.005, gae_lambda=0.95
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -7.99    |
+| time/              |          |
+|    fps             | 14       |
+|    iterations      | 1        |
+|    time_elapsed    | 141      |
+|    total_timesteps | 2048     |
+---------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -3.87       |
+| time/                   |             |
+|    fps                  | 14          |
+|    iterations           | 2           |
+|    time_elapsed         | 281         |
+|    total_timesteps      | 4096        |
+| train/                  |             |
+|    approx_kl            | 0.006813129 |
+|    clip_fraction        | 0.0899      |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.09       |
+|    explained_variance   | -0.0389     |
+|    learning_rate        | 0.0003      |
+|    loss                 | 0.00133     |
+|    n_updates            | 10          |
+|    policy_gradient_loss | -0.00749    |
+|    value_loss           | 0.0482      |
+-----------------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -4.2        |
+| time/                   |             |
+|    fps                  | 14          |
+|    iterations           | 3           |
+|    time_elapsed         | 421         |
+|    total_timesteps      | 6144        |
+| train/                  |             |
+|    approx_kl            | 0.006694019 |
+|    clip_fraction        | 0.018       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.08       |
+|    explained_variance   | 0.0234      |
+|    learning_rate        | 0.0003      |
+|    loss                 | 0.105       |
+|    n_updates            | 20          |
+|    policy_gradient_loss | -0.00324    |
+|    value_loss           | 0.358       |
+-----------------------------------------
+Mean reward: -4.487755151643567
+Training with gamma=0.95, ent_coef=0.01, gae_lambda=0.9
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -7.2     |
+| time/              |          |
+|    fps             | 14       |
+|    iterations      | 1        |
+|    time_elapsed    | 143      |
+|    total_timesteps | 2048     |
+---------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -6.79       |
+| time/                   |             |
+|    fps                  | 13          |
+|    iterations           | 2           |
+|    time_elapsed         | 297         |
+|    total_timesteps      | 4096        |
+| train/                  |             |
+|    approx_kl            | 0.011472927 |
+|    clip_fraction        | 0.0705      |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.09       |
+|    explained_variance   | -0.844      |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.0271     |
+|    n_updates            | 10          |
+|    policy_gradient_loss | -0.00364    |
+|    value_loss           | 0.0281      |
+-----------------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -6.64       |
+| time/                   |             |
+|    fps                  | 13          |
+|    iterations           | 3           |
+|    time_elapsed         | 450         |
+|    total_timesteps      | 6144        |
+| train/                  |             |
+|    approx_kl            | 0.004005526 |
+|    clip_fraction        | 0.0114      |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.08       |
+|    explained_variance   | 0.0357      |
+|    learning_rate        | 0.0003      |
+|    loss                 | 0.189       |
+|    n_updates            | 20          |
+|    policy_gradient_loss | -0.00507    |
+|    value_loss           | 0.263       |
+-----------------------------------------
+Mean reward: -6.643138251029617
+Training with gamma=0.95, ent_coef=0.01, gae_lambda=0.92
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -7.31    |
+| time/              |          |
+|    fps             | 11       |
+|    iterations      | 1        |
+|    time_elapsed    | 185      |
+|    total_timesteps | 2048     |
+---------------------------------
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 512        |
+|    ep_rew_mean          | -3.85      |
+| time/                   |            |
+|    fps                  | 10         |
+|    iterations           | 2          |
+|    time_elapsed         | 373        |
+|    total_timesteps      | 4096       |
+| train/                  |            |
+|    approx_kl            | 0.00685717 |
+|    clip_fraction        | 0.0611     |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -1.09      |
+|    explained_variance   | -0.206     |
+|    learning_rate        | 0.0003     |
+|    loss                 | -0.00905   |
+|    n_updates            | 10         |
+|    policy_gradient_loss | -0.00471   |
+|    value_loss           | 0.0291     |
+----------------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -5.05       |
+| time/                   |             |
+|    fps                  | 10          |
+|    iterations           | 3           |
+|    time_elapsed         | 576         |
+|    total_timesteps      | 6144        |
+| train/                  |             |
+|    approx_kl            | 0.003999366 |
+|    clip_fraction        | 0.01        |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.08       |
+|    explained_variance   | 0.0113      |
+|    learning_rate        | 0.0003      |
+|    loss                 | 0.225       |
+|    n_updates            | 20          |
+|    policy_gradient_loss | -0.00272    |
+|    value_loss           | 0.574       |
+-----------------------------------------
+Mean reward: -4.46361302427333
+Training with gamma=0.95, ent_coef=0.01, gae_lambda=0.95
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -7.85    |
+| time/              |          |
+|    fps             | 11       |
+|    iterations      | 1        |
+|    time_elapsed    | 184      |
+|    total_timesteps | 2048     |
+---------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -4.95        |
+| time/                   |              |
+|    fps                  | 11           |
+|    iterations           | 2            |
+|    time_elapsed         | 369          |
+|    total_timesteps      | 4096         |
+| train/                  |              |
+|    approx_kl            | 0.0070630005 |
+|    clip_fraction        | 0.0786       |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.09        |
+|    explained_variance   | -0.265       |
+|    learning_rate        | 0.0003       |
+|    loss                 | -0.0312      |
+|    n_updates            | 10           |
+|    policy_gradient_loss | -0.00741     |
+|    value_loss           | 0.0285       |
+------------------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -5.35       |
+| time/                   |             |
+|    fps                  | 11          |
+|    iterations           | 3           |
+|    time_elapsed         | 556         |
+|    total_timesteps      | 6144        |
+| train/                  |             |
+|    approx_kl            | 0.008424716 |
+|    clip_fraction        | 0.0247      |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.07       |
+|    explained_variance   | 0.0119      |
+|    learning_rate        | 0.0003      |
+|    loss                 | 0.18        |
+|    n_updates            | 20          |
+|    policy_gradient_loss | -0.00553    |
+|    value_loss           | 0.392       |
+-----------------------------------------
+Mean reward: -4.067154485991482
+Training with gamma=0.95, ent_coef=0.02, gae_lambda=0.9
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -8.09    |
+| time/              |          |
+|    fps             | 11       |
+|    iterations      | 1        |
+|    time_elapsed    | 186      |
+|    total_timesteps | 2048     |
+---------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -5.25       |
+| time/                   |             |
+|    fps                  | 11          |
+|    iterations           | 2           |
+|    time_elapsed         | 371         |
+|    total_timesteps      | 4096        |
+| train/                  |             |
+|    approx_kl            | 0.008977804 |
+|    clip_fraction        | 0.0897      |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.09       |
+|    explained_variance   | -0.505      |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.0106     |
+|    n_updates            | 10          |
+|    policy_gradient_loss | -0.00871    |
+|    value_loss           | 0.0308      |
+-----------------------------------------
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 512          |
+|    ep_rew_mean          | -5.72        |
+| time/                   |              |
+|    fps                  | 10           |
+|    iterations           | 3            |
+|    time_elapsed         | 559          |
+|    total_timesteps      | 6144         |
+| train/                  |              |
+|    approx_kl            | 0.0042408146 |
+|    clip_fraction        | 0.0085       |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -1.09        |
+|    explained_variance   | 0.0624       |
+|    learning_rate        | 0.0003       |
+|    loss                 | 0.0458       |
+|    n_updates            | 20           |
+|    policy_gradient_loss | -0.0025      |
+|    value_loss           | 0.267        |
+------------------------------------------
+Mean reward: -5.394234195530758
+Training with gamma=0.95, ent_coef=0.02, gae_lambda=0.92
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -6.97    |
+| time/              |          |
+|    fps             | 10       |
+|    iterations      | 1        |
+|    time_elapsed    | 193      |
+|    total_timesteps | 2048     |
+---------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -4.12       |
+| time/                   |             |
+|    fps                  | 10          |
+|    iterations           | 2           |
+|    time_elapsed         | 409         |
+|    total_timesteps      | 4096        |
+| train/                  |             |
+|    approx_kl            | 0.007157894 |
+|    clip_fraction        | 0.0424      |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.09       |
+|    explained_variance   | -1.3        |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.0176     |
+|    n_updates            | 10          |
+|    policy_gradient_loss | -0.00903    |
+|    value_loss           | 0.0294      |
+-----------------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -4.44       |
+| time/                   |             |
+|    fps                  | 10          |
+|    iterations           | 3           |
+|    time_elapsed         | 606         |
+|    total_timesteps      | 6144        |
+| train/                  |             |
+|    approx_kl            | 0.006072757 |
+|    clip_fraction        | 0.0214      |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.08       |
+|    explained_variance   | 0.00973     |
+|    learning_rate        | 0.0003      |
+|    loss                 | 0.215       |
+|    n_updates            | 20          |
+|    policy_gradient_loss | -0.00447    |
+|    value_loss           | 0.289       |
+-----------------------------------------
+Mean reward: -4.133045262458788
+Training with gamma=0.95, ent_coef=0.02, gae_lambda=0.95
+Using cuda device
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 512      |
+|    ep_rew_mean     | -7.31    |
+| time/              |          |
+|    fps             | 10       |
+|    iterations      | 1        |
+|    time_elapsed    | 187      |
+|    total_timesteps | 2048     |
+---------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -1.47       |
+| time/                   |             |
+|    fps                  | 10          |
+|    iterations           | 2           |
+|    time_elapsed         | 404         |
+|    total_timesteps      | 4096        |
+| train/                  |             |
+|    approx_kl            | 0.004957308 |
+|    clip_fraction        | 0.00273     |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.1        |
+|    explained_variance   | -0.00456    |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.011      |
+|    n_updates            | 10          |
+|    policy_gradient_loss | -0.000759   |
+|    value_loss           | 0.0502      |
+-----------------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 512         |
+|    ep_rew_mean          | -3.07       |
+| time/                   |             |
+|    fps                  | 10          |
+|    iterations           | 3           |
+|    time_elapsed         | 607         |
+|    total_timesteps      | 6144        |
+| train/                  |             |
+|    approx_kl            | 0.005974057 |
+|    clip_fraction        | 0.00684     |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.09       |
+|    explained_variance   | 0.00962     |
+|    learning_rate        | 0.0003      |
+|    loss                 | 0.334       |
+|    n_updates            | 20          |
+|    policy_gradient_loss | -0.00642    |
+|    value_loss           | 0.605       |
+-----------------------------------------
+Mean reward: -3.8262476056720454
+Best params: {'gamma': 0.8, 'ent_coef': 0.02, 'gae_lambda': 0.92}, Best reward: -3.578895312637475
