@@ -1,3 +1,5 @@
+import time
+
 from binance_historical_data import BinanceDataDumper
 
 from util import invert_preprocess, preprocess, CustomEnv, OHLC_COLUMNS, add_features, SEQUENCE_LENGTH, \
@@ -115,33 +117,54 @@ klines = pd.DataFrame(klines, columns=columns)
 klines = klines.loc[:, OHLC_COLUMNS].astype(np.float32)
 
 
-class NeuralNetStrat():
+class NeuralNetStrat:
     def __init__(self, rl_model, my_model, scaler):
         self.scaler = scaler
         self.my_model = my_model
         self.rl_model = rl_model
         self.buy_price = None
+        self.paper_wallet = 1000.0  # Paper trading USD balance
+        self.asset_balance = 0.0  # Paper trading NEAR balance
 
     def next(self, data):
         df = data.copy()
         observation, curr_close, _ = calculate_observation(df, self.my_model, self.scaler, self.buy_price)
 
         action, _ = self.rl_model.predict(observation, deterministic=True)
+
         if self.buy_price is None:
             if action == 1:
-                # self.buy()
-                print(f"buy")
+                print("Buy signal")
                 self.buy_price = curr_close
+                self.asset_balance = self.paper_wallet / curr_close
+                self.paper_wallet = 0.0
+
         else:
             if action == 2:
+                print("Sell signal")
                 commission = 0.001
                 sell_fee = curr_close * (1 - commission)
                 buy_fee = self.buy_price * (1 + commission)
                 gain_from_trade_fee = (sell_fee - buy_fee) / buy_fee
-                print(f"gain {gain_from_trade_fee}")
-                # self.sell()
+
+                print(f"Gain: {gain_from_trade_fee}")
+                self.paper_wallet = self.asset_balance * curr_close
+                self.asset_balance = 0.0
                 self.buy_price = None
+
+        print(f"Paper Wallet Balance: {self.paper_wallet}")
+        print(f"Asset Balance: {self.asset_balance}")
 
 
 strat = NeuralNetStrat(rl_model, my_model, scaler)
 
+while True:
+    # Fetch new klines data
+    klines = client.get_historical_klines("NEARUSDT", Client.KLINE_INTERVAL_1MINUTE, "1 day ago UTC")
+    klines = pd.DataFrame(klines, columns=columns)
+    klines = klines.loc[:, OHLC_COLUMNS].astype(np.float32)
+
+    # Call the strategy
+    strat.next(klines)
+
+    time.sleep(60)
