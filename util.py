@@ -1,19 +1,21 @@
-import random
-import gymnasium as gym
+import os
+
 import numpy as np
 import pandas as pd
-from darts import TimeSeries
-from darts.models import TFTModel
-from gymnasium import spaces
+from binance_historical_data import BinanceDataDumper
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from ta import trend, momentum
 
 OHLC_COLUMNS = [
     "Open",
     "High",
     "Low",
     "Close"]
-SEQUENCE_LENGTH = 128
-PREDICTION_LENGTH = 32
+
+OBS_OTHER = "other"
+OBS_PRICES_SEQUENCE = "prices_sequence"
+MODEL_INPUT_IN_OBSERVATION = 256
+SKIP_STEPS = 1024 + MODEL_INPUT_IN_OBSERVATION
 
 
 class MultiScaler:
@@ -22,28 +24,27 @@ class MultiScaler:
         self.std = std
 
 
-def preprocess(df, scaler=None):
+def preprocess(df: pd.DataFrame, scaler=None):
     # Apply percentage change only to OHLC columns
     df_pct = df[OHLC_COLUMNS].pct_change()
 
-    # clamp
-    df_pct[df_pct > 0.1] = 0.1
-    df_pct[df_pct < -0.1] = -0.1
+    # Clamp
+    df_pct.clip(lower=-0.1, upper=0.1, inplace=True)
 
     # Concatenate the percentage-changed OHLC with the other columns
     df_all = pd.concat([df_pct, df.drop(columns=OHLC_COLUMNS)], axis=1)
 
     # Drop NA values (from pct_change operation)
-    df_all = df_all.dropna()
+    df_all.dropna(inplace=True)
 
     # Apply MinMax scaling to all columns
     if scaler is None:
-        scaler = MultiScaler(MinMaxScaler(feature_range=(-1, 1)), StandardScaler())
+        scaler = MultiScaler(MinMaxScaler(feature_range=(-1, 1), copy=False), StandardScaler(copy=False))
         df_multi_scaled = scaler.min_max.fit_transform(scaler.std.fit_transform(df_all))
     else:
         df_multi_scaled = scaler.min_max.transform(scaler.std.transform(df_all))
 
-    df_scaled = pd.DataFrame(df_multi_scaled,
+    df_scaled = pd.DataFrame(df_multi_scaled.copy(),
                              columns=df_all.columns,
                              index=df_all.index)
 
@@ -51,9 +52,11 @@ def preprocess(df, scaler=None):
 
 
 def invert_preprocess(original_start, scaler: MultiScaler, df):
+    df = df.copy()
+
     original_start = original_start[OHLC_COLUMNS].to_numpy()
     # Invert MinMax scaling for all columns
-    df_inv_scaled = pd.DataFrame(scaler.std.inverse_transform(scaler.min_max.inverse_transform(df)),
+    df_inv_scaled = pd.DataFrame(scaler.std.inverse_transform(scaler.min_max.inverse_transform(df.to_numpy())),
                                  columns=df.columns,
                                  index=df.index)
 
@@ -66,139 +69,140 @@ def invert_preprocess(original_start, scaler: MultiScaler, df):
     return df_inv_scaled
 
 
-def calculate_observation(df, model, scaler, buy_price):
-    MODEL_INPUT_IN_OBSERVATION = 10
+def add_features(df):
+    df = df.copy()
+    # Add Simple Moving Averages (SMAs)
+    df['SMA_256'] = df['Close'].rolling(window=256).mean()
+    df['SMA_512'] = df['Close'].rolling(window=512).mean()
+    df['SMA_1024'] = df['Close'].rolling(window=1024).mean()
 
+    # Convert SMA columns to distance in percentages from "Close"
+    df['SMA_256'] = ((df['Close'] - df['SMA_256']) / df['SMA_256'])
+    df['SMA_512'] = ((df['Close'] - df['SMA_512']) / df['SMA_512'])
+    df['SMA_1024'] = ((df['Close'] - df['SMA_1024']) / df['SMA_1024'])
+
+    # Add MACD
+    macd = trend.MACD(df['Close'])
+    df['MACD_diff'] = macd.macd_diff()
+
+    # Add RSI
+    df['RSI'] = momentum.RSIIndicator(df['Close']).rsi()
+
+    # Add CCI
+    cci = trend.CCIIndicator(df['High'], df['Low'], df['Close'])
+    df['CCI'] = cci.cci()
+
+    # Add ADX
+    adx = trend.ADXIndicator(df['High'], df['Low'], df['Close'])
+    df['ADX'] = adx.adx()
+
+    # Add Stochastic Oscillator
+    indicator_so = momentum.StochasticOscillator(high=df['High'], low=df['Low'], close=df['Close'])
+    df['stoch'] = indicator_so.stoch()
+
+    # Drop NaN rows resulting from the indicator calculations
+    df.dropna(inplace=True)
+    return df
+
+
+def calculate_observation(df, scaler, buy_price):
     df_with_features = add_features(df)
 
     original_start = df_with_features.iloc[-1]
     df_preprocessed, _ = preprocess(df_with_features, scaler)
 
-    X = TimeSeries.from_dataframe(df_preprocessed[-SEQUENCE_LENGTH:])
-    y = model.predict(PREDICTION_LENGTH, X, verbose=False, num_samples=8)
-
-    y_mean = y.mean()
-
-    y_inverted = invert_preprocess(original_start, scaler, y_mean.pd_dataframe())
-    y_max_close = y_inverted.Close.mean()
     curr_close = original_start.Close
     prev_close = df_with_features.iloc[-2].Close
 
-    y_std = y.std().pd_dataframe().Close.mean()
-    predicted_gain = (y_max_close - curr_close) / curr_close
-    current_gain = ((curr_close - buy_price) / buy_price) if buy_price is not None else 0
-    last_32 = df_preprocessed.Close.iloc[-MODEL_INPUT_IN_OBSERVATION:].to_numpy().flatten()
-    model_output = y_mean[:MODEL_INPUT_IN_OBSERVATION].pd_dataframe().Close.to_numpy().flatten()
+    if buy_price is None:
+        current_gain = 0
+    else:
+        current_gain = ((curr_close - buy_price) / buy_price)
+    previous_prices = df_preprocessed.iloc[-MODEL_INPUT_IN_OBSERVATION:].to_numpy()  # shape = (N, 7)
     buy_status = 1 if buy_price is not None else 0
-    observation = np.concatenate(
-        [last_32, model_output, [predicted_gain], [buy_status], [y_std], [current_gain]]).astype(np.float32)
+    observation = {
+        OBS_PRICES_SEQUENCE: previous_prices.astype(np.float32),
+        OBS_OTHER: np.concatenate([[buy_status], [current_gain]]).astype(np.float32)
+    }
 
     return observation, curr_close, prev_close
 
 
-class CustomEnv(gym.Env):
-    SKIP_STEPS = 1200
+def test_preprocess_invert_preprocess(original_df):
+    from sklearn.metrics import mean_absolute_error
+    preprocessed_df, scaler = preprocess(original_df)
 
-    def __init__(self, dataset: pd.DataFrame, my_model: TFTModel, scaler: MultiScaler, episode_length=512,
-                 commission=0.001, eval=False):
-        super().__init__()
+    # Assume that 'original_start' is the first row of the original DataFrame
+    original_start = original_df.iloc[0]
 
-        self.eval = eval
-        self.commission = commission
+    inverted_df = invert_preprocess(original_start, scaler, preprocessed_df)
 
-        # 0: hold; 1: buy; 2: sell
-        self.action_space = spaces.Discrete(3)
+    mae_list = []
+    for col in original_df.columns:
+        # Start from the second row of the original_df for comparison
+        mae = mean_absolute_error(original_df.iloc[1:][col], inverted_df[col])
+        mae_list.append(mae)
+        print(f"Mean Absolute Error for {col}: {mae}")
 
-        self.NUM_FEATURES = calculate_observation(dataset, my_model, scaler, False)[0].shape[0]
-        print(f"obs length = {self.NUM_FEATURES}")
+    avg_mae = sum(mae_list) / len(mae_list)
+    print(f"Average MAE: {avg_mae}")
 
-        # Update the observation space to include extra information
-        self.observation_space = spaces.Box(low=-1, high=1,
-                                            shape=(self.NUM_FEATURES,),
-                                            dtype=np.float32)
-
-        self.dataset = dataset
-        self.my_model = my_model
-        self.scaler = scaler
-        self.episode_length = episode_length
-        self.current_step = 0
-        self.start_index = 0
-        self.buy_price = None
-
-    def step(self, action):
-        self.current_step += 1
-
-        # Calculate the current observation
-        observation, curr_close, prev_close = self.calculate_observation(self.current_step)
-
-        # Initialize reward and info
-        reward = 0
-
-        # Give small rewards or penalties for holding
-        if self.buy_price is not None:
-            change = (curr_close - prev_close) / prev_close
-            if abs(change) > 0.001:
-                if change > 0:
-                    reward += 0.01  # small reward for holding when price increases
-                elif change < 0:
-                    reward -= 0.01  # small penalty for holding when price decreases
-
-        # Action logic
-        if self.buy_price is None:
-            if action == 1:  # Buy
-                self.buy_price = curr_close
-                reward -= 0.02
-        else:
-            sell_fee = curr_close * (1 - self.commission)
-            buy_fee = self.buy_price * (1 + self.commission)
-            gain_from_trade_fee = (sell_fee - buy_fee) / buy_fee
-            if action == 2:  # Sell
-                self.buy_price = None
-                # Large reward for a profitable sell
-                reward += gain_from_trade_fee * 100
-
-        info = {}
-        terminated = self.current_step >= self.episode_length
-        return observation, reward, terminated, False, info
-
-    def reset(self, seed=None, options=None):
-        if self.eval:
-            random.seed(42)
-        self.current_step = 0
-        self.buy_price = None
-        self.start_index = random.randint(self.SKIP_STEPS, len(self.dataset) - self.episode_length - 1)
-        observation, _, _ = self.calculate_observation(self.current_step)
-        info = {}
-        return observation, info
-
-    def render(self):
-        pass
-
-    def close(self):
-        pass
-
-    def calculate_observation(self, current_step):
-        index_start = self.start_index + current_step - self.SKIP_STEPS
-        index_end = self.start_index + current_step
-
-        df = self.dataset.iloc[index_start:index_end].copy()
-        observation, curr_close, prev_close = calculate_observation(df, self.my_model, self.scaler, self.buy_price)
-
-        return observation, curr_close, prev_close
+    return avg_mae < 1e-9
 
 
-def add_features(df):
-    df = df.copy()
-    # add technical indicators to dataset
-    df['SMA_256'] = df['Close'].rolling(window=256).mean()
-    df['SMA_512'] = df['Close'].rolling(window=512).mean()
-    df['SMA_1024'] = df['Close'].rolling(window=1024).mean()
+def test_orig_val(dataset):
+    # The original_start passed to invert_preprocess() must be the first value in the corresponding
+    # original DataFrame segment. For the first range, that's range_orig.iloc[0].
+    # For the second range, it's range_orig.iloc[500].
 
-    # convert SMA columns to distance in percentages from "Close"
-    df['SMA_256'] = ((df['Close'] - df['SMA_256']) / df['SMA_256'])
-    df['SMA_512'] = ((df['Close'] - df['SMA_512']) / df['SMA_512'])
-    df['SMA_1024'] = ((df['Close'] - df['SMA_1024']) / df['SMA_1024'])
+    range_orig = dataset.iloc[2000:3000]
+    range_preproc, s = preprocess(range_orig)
 
-    # drop NaN rows resulting from the SMA calculations
-    df = df.dropna()
+    # Inverted for the whole preprocessed range
+    range1_inv = invert_preprocess(range_orig.iloc[0], s, range_preproc)
+
+    # Inverted for the latter part of the preprocessed range
+    range2_inv = invert_preprocess(range_orig.iloc[500], s, range_preproc.iloc[500:])
+
+    # Due to floating point errors, equality may not be exact. So you might use pd.testing.assert_frame_equal
+    # with the check_exact=False parameter
+    pd.testing.assert_frame_equal(range1_inv.iloc[500:].reset_index(drop=True),
+                                  range2_inv.reset_index(drop=True), check_exact=False)
+
+
+def download_data():
+    data_dumper = BinanceDataDumper(
+        path_dir_where_to_dump=".",
+        asset_class="spot",  # spot, um, cm
+        data_type="klines",  # aggTrades, klines, trades
+        data_frequency="1m",
+    )
+
+    print(data_dumper.get_list_all_trading_pairs())
+
+    data_dumper.dump_data(tickers=["NEARUSDT"])
+
+    filenames = next(os.walk("./spot/monthly/klines/NEARUSDT/1m"), (None, None, []))[2]  # [] if no file
+
+    columns = [
+        "Open time",
+        "Open",
+        "High",
+        "Low",
+        "Close",
+        "Volume",
+        "Close time",
+        "Quote asset volume",
+        "Number of trades",
+        "Taker buy base asset volume",
+        "Taker buy quote asset volume",
+        "Ignore"
+    ]
+
+    df = pd.DataFrame(columns=columns)
+
+    for f in filenames:
+        new_df = pd.read_csv(f"./spot/monthly/klines/NEARUSDT/1m/{f}", header=None, names=columns)
+        df = pd.concat([df, new_df], ignore_index=True)
+    df = df.sort_values(by="Open time")
     return df

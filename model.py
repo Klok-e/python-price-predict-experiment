@@ -43,12 +43,12 @@ class LSTMExtractor(BaseFeaturesExtractor):
                 encoded_tensor_list.append(out[:, -1, :])
             else:
                 encoded_tensor_list.append(extractor(obs_data))
-
+        print(list(map(lambda x: x.shape, encoded_tensor_list)))
         return th.cat(encoded_tensor_list, dim=1)
 
 
 class TransformerExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space: spaces.Dict, transformer_hidden_size=32, transformer_heads=4,
+    def __init__(self, observation_space: spaces.Dict, transformer_hidden_size=64, transformer_heads=4,
                  transformer_layers=1):
         super().__init__(observation_space, features_dim=1)
 
@@ -61,7 +61,8 @@ class TransformerExtractor(BaseFeaturesExtractor):
                 transformer_layer = nn.TransformerEncoderLayer(
                     d_model=n_features,
                     nhead=transformer_heads,
-                    dim_feedforward=transformer_hidden_size
+                    dim_feedforward=transformer_hidden_size,
+                    batch_first=True
                 )
                 extractors[key] = nn.TransformerEncoder(
                     transformer_layer,
@@ -87,7 +88,9 @@ class TransformerExtractor(BaseFeaturesExtractor):
         pe[:, 1::2] = th.cos(position * div_term)
         return pe.unsqueeze(0)
 
-    def forward(self, observations: th.Tensor) -> th.Tensor:
+    def forward(self, observations: dict[th.Tensor]) -> th.Tensor:
+        # print(list(map(lambda x: x[1].shape, observations.items())))
+        # [torch.Size([10, 2]), torch.Size([10, 256, 12])] where first dim is batch size, 12 is amount of features
         encoded_tensor_list = []
 
         for key, extractor in self.extractors.items():
@@ -95,10 +98,15 @@ class TransformerExtractor(BaseFeaturesExtractor):
             if key == "prices_sequence":
                 # Add positional encoding
                 seq_len = obs_data.size(1)
+                # Ensure positional encoding is added correctly
                 obs_data += self.positional_encoding[:, :seq_len, :]
                 out = extractor(obs_data)
-                encoded_tensor_list.append(out[-1, :, :])
+                # print(out.shape)
+                # torch.Size([10, 256, 12])
+                # Make sure to take the last sequence output for each element in the batch
+                encoded_tensor_list.append(out[:, -1])
             else:
                 encoded_tensor_list.append(extractor(obs_data))
-
+        # print(list(map(lambda x: x.shape,encoded_tensor_list)))
+        # [torch.Size([10, 2]), torch.Size([10, 12])]
         return th.cat(encoded_tensor_list, dim=1)
