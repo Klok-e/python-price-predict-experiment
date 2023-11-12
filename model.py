@@ -43,7 +43,7 @@ class LSTMExtractor(BaseFeaturesExtractor):
                 encoded_tensor_list.append(out[:, -1, :])
             else:
                 encoded_tensor_list.append(extractor(obs_data))
-        print(list(map(lambda x: x.shape, encoded_tensor_list)))
+        # print(list(map(lambda x: x.shape, encoded_tensor_list)))
         return th.cat(encoded_tensor_list, dim=1)
 
 
