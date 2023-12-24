@@ -14,8 +14,13 @@ OHLC_COLUMNS = [
 
 OBS_OTHER = "other"
 OBS_PRICES_SEQUENCE = "prices_sequence"
-MODEL_INPUT_IN_OBSERVATION = 256
+MODEL_INPUT_IN_OBSERVATION = 64
 SKIP_STEPS = 1024 + MODEL_INPUT_IN_OBSERVATION
+
+TICKERS = [
+    "SOLUSDT", "BTCFDUSD", "BTCUSDT", "ETHUSDT", "MOVRUSDT",
+    "AVAXUSDT", "USDCUSDT", "OPUSDT", "DOTUSDT", "FDUSDUSDT"
+]
 
 
 class MultiScaler:
@@ -180,8 +185,10 @@ def download_data():
 
     print(data_dumper.get_list_all_trading_pairs())
 
-    data_dumper.dump_data(tickers=["NEARUSDT"])
+    data_dumper.dump_data(tickers=TICKERS)
+    return list(map(lambda ticker: get_df_for_ticker(ticker), TICKERS))
 
+def get_df_for_ticker(ticker):
     filenames = next(os.walk("./spot/monthly/klines/NEARUSDT/1m"), (None, None, []))[2]  # [] if no file
 
     columns = [
@@ -202,7 +209,8 @@ def download_data():
     df = pd.DataFrame(columns=columns)
 
     for f in filenames:
-        new_df = pd.read_csv(f"./spot/monthly/klines/NEARUSDT/1m/{f}", header=None, names=columns)
+        new_df = pd.read_csv(f"./spot/monthly/klines/{ticker}/1m/{f}", header=None, names=columns)
         df = pd.concat([df, new_df], ignore_index=True)
     df = df.sort_values(by="Open time")
     return df
+
