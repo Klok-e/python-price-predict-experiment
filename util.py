@@ -18,7 +18,7 @@ MODEL_INPUT_IN_OBSERVATION = 64
 SKIP_STEPS = 1024 + MODEL_INPUT_IN_OBSERVATION
 
 TICKERS = [
-    "SOLUSDT", "BTCFDUSD", "BTCUSDT", "ETHUSDT", "MOVRUSDT",
+    "NEARUSDT", "SOLUSDT", "BTCFDUSD", "BTCUSDT", "ETHUSDT", "MOVRUSDT",
     "AVAXUSDT", "USDCUSDT", "OPUSDT", "DOTUSDT", "FDUSDUSDT"
 ]
 
@@ -34,7 +34,7 @@ def preprocess(df: pd.DataFrame, scaler=None):
     df_pct = df[OHLC_COLUMNS].pct_change()
 
     # Clamp
-    df_pct.clip(lower=-0.1, upper=0.1, inplace=True)
+    df_pct = np.tanh(df_pct)
 
     # Concatenate the percentage-changed OHLC with the other columns
     df_all = pd.concat([df_pct, df.drop(columns=OHLC_COLUMNS)], axis=1)
@@ -54,6 +54,39 @@ def preprocess(df: pd.DataFrame, scaler=None):
                              index=df_all.index)
 
     return df_scaled, scaler
+
+
+def full_preprocess(df: pd.DataFrame, scaler=None):
+    dataset = add_features(df)
+    df_preprocessed, scaler = preprocess(dataset, scaler=scaler)
+    return df_preprocessed, scaler
+
+
+def full_handle_tickers(df_tickers):
+    combined_dataset = pd.DataFrame()
+
+    # Combine data from all tickers with added features
+    for df_ticker in df_tickers:
+        dataset = df_ticker.loc[:, OHLC_COLUMNS].astype(np.float32)
+        dataset = add_features(pd.DataFrame(dataset.to_numpy(), columns=OHLC_COLUMNS))
+        combined_dataset = pd.concat([combined_dataset, dataset])
+
+    # Preprocess the combined dataset
+    combined_preprocessed, combined_scaler = preprocess(combined_dataset)
+
+    results = []
+
+    # Transform each ticker separately using the combined scaler
+    for df_ticker in df_tickers:
+        dataset = df_ticker.loc[:, OHLC_COLUMNS].astype(np.float32)
+        dataset = add_features(pd.DataFrame(dataset.to_numpy(), columns=OHLC_COLUMNS))
+
+        # Use the combined scaler to transform the dataset
+        df_scaled, _ = preprocess(dataset, combined_scaler)
+
+        results.append((df_scaled, dataset, combined_scaler))
+
+    return results
 
 
 def invert_preprocess(original_start, scaler: MultiScaler, df):
@@ -110,20 +143,17 @@ def add_features(df):
     return df
 
 
-def calculate_observation(df, scaler, buy_price):
-    df_with_features = add_features(df)
-
-    original_start = df_with_features.iloc[-1]
-    df_preprocessed, _ = preprocess(df_with_features, scaler)
+def calculate_observation(preprocessed_df, pristine_df, buy_price):
+    original_start = pristine_df.iloc[-1]
 
     curr_close = original_start.Close
-    prev_close = df_with_features.iloc[-2].Close
+    prev_close = pristine_df.iloc[-2].Close
 
     if buy_price is None:
         current_gain = 0
     else:
         current_gain = ((curr_close - buy_price) / buy_price)
-    previous_prices = df_preprocessed.iloc[-MODEL_INPUT_IN_OBSERVATION:].to_numpy()  # shape = (N, 7)
+    previous_prices = preprocessed_df.iloc[-MODEL_INPUT_IN_OBSERVATION:].to_numpy()  # shape = (N, 7)
     buy_status = 1 if buy_price is not None else 0
     observation = {
         OBS_PRICES_SEQUENCE: previous_prices.astype(np.float32),
@@ -175,7 +205,7 @@ def test_orig_val(dataset):
                                   range2_inv.reset_index(drop=True), check_exact=False)
 
 
-def download_data():
+def download_data(refresh=True):
     data_dumper = BinanceDataDumper(
         path_dir_where_to_dump=".",
         asset_class="spot",  # spot, um, cm
@@ -185,11 +215,14 @@ def download_data():
 
     print(data_dumper.get_list_all_trading_pairs())
 
-    data_dumper.dump_data(tickers=TICKERS)
+    if refresh:
+        data_dumper.dump_data(tickers=TICKERS)
+
     return list(map(lambda ticker: get_df_for_ticker(ticker), TICKERS))
 
+
 def get_df_for_ticker(ticker):
-    filenames = next(os.walk("./spot/monthly/klines/NEARUSDT/1m"), (None, None, []))[2]  # [] if no file
+    filenames = next(os.walk(f"./spot/monthly/klines/{ticker}/1m"), (None, None, []))[2]  # [] if no file
 
     columns = [
         "Open time",
@@ -210,7 +243,6 @@ def get_df_for_ticker(ticker):
 
     for f in filenames:
         new_df = pd.read_csv(f"./spot/monthly/klines/{ticker}/1m/{f}", header=None, names=columns)
-        df = pd.concat([df, new_df], ignore_index=True)
+        df = pd.concat([d for d in [df, new_df] if not d.empty], ignore_index=True)
     df = df.sort_values(by="Open time")
     return df
-
