@@ -10,3 +10,5 @@ rl-model-checkpoints/
 tensorboard/
 keys.txt
 NeuralNetStrat.html
+cherry-picked-best-models/
+cache/

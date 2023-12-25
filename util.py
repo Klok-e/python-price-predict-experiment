@@ -1,4 +1,6 @@
+import datetime
 import os
+import pickle
 
 import numpy as np
 import pandas as pd
@@ -18,8 +20,7 @@ MODEL_INPUT_IN_OBSERVATION = 64
 SKIP_STEPS = 1024 + MODEL_INPUT_IN_OBSERVATION
 
 TICKERS = [
-    "NEARUSDT", "SOLUSDT", "BTCFDUSD", "BTCUSDT", "ETHUSDT", "MOVRUSDT",
-    "AVAXUSDT", "USDCUSDT", "OPUSDT", "DOTUSDT", "FDUSDUSDT"
+    "NEARUSDT", "SOLUSDT", "BTCFDUSD", "BTCUSDT", "ETHUSDT"
 ]
 
 
@@ -29,7 +30,7 @@ class MultiScaler:
         self.std = std
 
 
-def preprocess(df: pd.DataFrame, scaler=None):
+def __preprocess(df: pd.DataFrame, scaler=None):
     # Apply percentage change only to OHLC columns
     df_pct = df[OHLC_COLUMNS].pct_change()
 
@@ -57,39 +58,33 @@ def preprocess(df: pd.DataFrame, scaler=None):
 
 
 def full_preprocess(df: pd.DataFrame, scaler=None):
-    dataset = add_features(df)
-    df_preprocessed, scaler = preprocess(dataset, scaler=scaler)
+    dataset = __add_features(df)
+    df_preprocessed, scaler = __preprocess(dataset, scaler=scaler)
     return df_preprocessed, scaler
 
 
-def full_handle_tickers(df_tickers):
-    combined_dataset = pd.DataFrame()
+def __full_handle_tickers(df_tickers):
+    datasets = []
 
-    # Combine data from all tickers with added features
     for df_ticker in df_tickers:
         dataset = df_ticker.loc[:, OHLC_COLUMNS].astype(np.float32)
-        dataset = add_features(pd.DataFrame(dataset.to_numpy(), columns=OHLC_COLUMNS))
-        combined_dataset = pd.concat([combined_dataset, dataset])
+        dataset_with_features = __add_features(pd.DataFrame(dataset, columns=OHLC_COLUMNS))
+        datasets.append(dataset_with_features)
 
-    # Preprocess the combined dataset
-    combined_preprocessed, combined_scaler = preprocess(combined_dataset)
+    combined_dataset = pd.concat(datasets)
+
+    combined_preprocessed, combined_scaler = __preprocess(combined_dataset)
 
     results = []
 
-    # Transform each ticker separately using the combined scaler
-    for df_ticker in df_tickers:
-        dataset = df_ticker.loc[:, OHLC_COLUMNS].astype(np.float32)
-        dataset = add_features(pd.DataFrame(dataset.to_numpy(), columns=OHLC_COLUMNS))
-
-        # Use the combined scaler to transform the dataset
-        df_scaled, _ = preprocess(dataset, combined_scaler)
-
+    for dataset in datasets:
+        df_scaled, _ = __preprocess(dataset, combined_scaler)
         results.append((df_scaled, dataset, combined_scaler))
 
     return results
 
 
-def invert_preprocess(original_start, scaler: MultiScaler, df):
+def __invert_preprocess(original_start, scaler: MultiScaler, df):
     df = df.copy()
 
     original_start = original_start[OHLC_COLUMNS].to_numpy()
@@ -107,7 +102,7 @@ def invert_preprocess(original_start, scaler: MultiScaler, df):
     return df_inv_scaled
 
 
-def add_features(df):
+def __add_features(df):
     df = df.copy()
     # Add Simple Moving Averages (SMAs)
     df['SMA_256'] = df['Close'].rolling(window=256).mean()
@@ -165,12 +160,12 @@ def calculate_observation(preprocessed_df, pristine_df, buy_price):
 
 def test_preprocess_invert_preprocess(original_df):
     from sklearn.metrics import mean_absolute_error
-    preprocessed_df, scaler = preprocess(original_df)
+    preprocessed_df, scaler = __preprocess(original_df)
 
     # Assume that 'original_start' is the first row of the original DataFrame
     original_start = original_df.iloc[0]
 
-    inverted_df = invert_preprocess(original_start, scaler, preprocessed_df)
+    inverted_df = __invert_preprocess(original_start, scaler, preprocessed_df)
 
     mae_list = []
     for col in original_df.columns:
@@ -191,13 +186,13 @@ def test_orig_val(dataset):
     # For the second range, it's range_orig.iloc[500].
 
     range_orig = dataset.iloc[2000:3000]
-    range_preproc, s = preprocess(range_orig)
+    range_preproc, s = __preprocess(range_orig)
 
     # Inverted for the whole preprocessed range
-    range1_inv = invert_preprocess(range_orig.iloc[0], s, range_preproc)
+    range1_inv = __invert_preprocess(range_orig.iloc[0], s, range_preproc)
 
     # Inverted for the latter part of the preprocessed range
-    range2_inv = invert_preprocess(range_orig.iloc[500], s, range_preproc.iloc[500:])
+    range2_inv = __invert_preprocess(range_orig.iloc[500], s, range_preproc.iloc[500:])
 
     # Due to floating point errors, equality may not be exact. So you might use pd.testing.assert_frame_equal
     # with the check_exact=False parameter
@@ -205,7 +200,7 @@ def test_orig_val(dataset):
                                   range2_inv.reset_index(drop=True), check_exact=False)
 
 
-def download_data(refresh=True):
+def __download_data(refresh=True):
     data_dumper = BinanceDataDumper(
         path_dir_where_to_dump=".",
         asset_class="spot",  # spot, um, cm
@@ -216,12 +211,12 @@ def download_data(refresh=True):
     print(data_dumper.get_list_all_trading_pairs())
 
     if refresh:
-        data_dumper.dump_data(tickers=TICKERS)
+        data_dumper.dump_data(tickers=TICKERS, date_start=datetime.date(2020, 1, 1))
 
-    return list(map(lambda ticker: get_df_for_ticker(ticker), TICKERS))
+    return list(map(lambda ticker: __get_df_for_ticker(ticker), TICKERS))
 
 
-def get_df_for_ticker(ticker):
+def __get_df_for_ticker(ticker):
     filenames = next(os.walk(f"./spot/monthly/klines/{ticker}/1m"), (None, None, []))[2]  # [] if no file
 
     columns = [
@@ -246,3 +241,32 @@ def get_df_for_ticker(ticker):
         df = pd.concat([d for d in [df, new_df] if not d.empty], ignore_index=True)
     df = df.sort_values(by="Open time")
     return df
+
+
+def __save_processed_data(df_tickers, filename):
+    dirname = os.path.dirname(filename)
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+
+    # Save the processed data to disk
+    with open(filename, 'wb') as file:
+        pickle.dump(df_tickers, file)
+
+
+def __load_processed_data(filename):
+    # Load the processed data from disk
+    with open(filename, 'rb') as file:
+        return pickle.load(file)
+
+
+def download_and_process_data_if_available(filename):
+    # Check if the processed data already exists
+    if os.path.exists(filename):
+        print("Loading data from cache")
+        return __load_processed_data(filename)
+    else:
+        print("Downloading and processing data")
+        df_tickers = __download_data()
+        df_tickers_processed = __full_handle_tickers(df_tickers)
+        __save_processed_data(df_tickers_processed, filename)
+        return df_tickers_processed
