@@ -2,7 +2,7 @@ import time
 
 from binance_historical_data import BinanceDataDumper
 
-from util import __invert_preprocess, __preprocess, CustomEnv, OHLC_COLUMNS, __add_features, SEQUENCE_LENGTH, \
+from util import __invert_preprocess, preprocess_scale, CustomEnv, OHLC_COLUMNS, preprocess_add_features, SEQUENCE_LENGTH, \
     PREDICTION_LENGTH, calculate_observation
 
 data_dumper = BinanceDataDumper(
@@ -45,13 +45,13 @@ df = df.sort_values(by="Open time")
 dataset = df.loc[:, OHLC_COLUMNS].astype(np.float64)
 dataset = pd.DataFrame(dataset.to_numpy(), columns=OHLC_COLUMNS)
 
-dataset = __add_features(dataset)
+dataset = preprocess_add_features(dataset)
 
-preprocessed_dataset, scaler = __preprocess(dataset)
+preprocessed_dataset, scaler = preprocess_scale(dataset)
 
 # transform dataset so that all transform-invert transform pairs are idempotent
 dataset = __invert_preprocess(dataset.iloc[0], scaler, preprocessed_dataset)
-dataset = __add_features(dataset)
+dataset = preprocess_add_features(dataset)
 
 from darts import TimeSeries
 import warnings

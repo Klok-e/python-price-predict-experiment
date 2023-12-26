@@ -5,6 +5,7 @@ import pickle
 import numpy as np
 import pandas as pd
 from binance_historical_data import BinanceDataDumper
+from line_profiler import profile
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from ta import trend, momentum
 
@@ -30,7 +31,8 @@ class MultiScaler:
         self.std = std
 
 
-def __preprocess(df: pd.DataFrame, scaler=None):
+@profile
+def preprocess_scale(df: pd.DataFrame, scaler=None):
     # Apply percentage change only to OHLC columns
     df_pct = df[OHLC_COLUMNS].pct_change()
 
@@ -58,8 +60,8 @@ def __preprocess(df: pd.DataFrame, scaler=None):
 
 
 def full_preprocess(df: pd.DataFrame, scaler=None):
-    dataset = __add_features(df)
-    df_preprocessed, scaler = __preprocess(dataset, scaler=scaler)
+    df_features = preprocess_add_features(df)
+    df_preprocessed, scaler = preprocess_scale(df_features, scaler=scaler)
     return df_preprocessed, scaler
 
 
@@ -68,17 +70,18 @@ def __full_handle_tickers(df_tickers):
 
     for df_ticker in df_tickers:
         dataset = df_ticker.loc[:, OHLC_COLUMNS].astype(np.float32)
-        dataset_with_features = __add_features(pd.DataFrame(dataset, columns=OHLC_COLUMNS))
+        dataset.index = pd.to_datetime(df_ticker["Open time"], unit='ms')
+        dataset_with_features = preprocess_add_features(pd.DataFrame(dataset, columns=OHLC_COLUMNS))
         datasets.append(dataset_with_features)
 
     combined_dataset = pd.concat(datasets)
 
-    combined_preprocessed, combined_scaler = __preprocess(combined_dataset)
+    combined_preprocessed, combined_scaler = preprocess_scale(combined_dataset)
 
     results = []
 
     for dataset in datasets:
-        df_scaled, _ = __preprocess(dataset, combined_scaler)
+        df_scaled, _ = preprocess_scale(dataset, combined_scaler)
         results.append((df_scaled, dataset, combined_scaler))
 
     return results
@@ -102,7 +105,7 @@ def __invert_preprocess(original_start, scaler: MultiScaler, df):
     return df_inv_scaled
 
 
-def __add_features(df):
+def preprocess_add_features(df):
     df = df.copy()
     # Add Simple Moving Averages (SMAs)
     df['SMA_256'] = df['Close'].rolling(window=256).mean()
@@ -138,6 +141,7 @@ def __add_features(df):
     return df
 
 
+@profile
 def calculate_observation(preprocessed_df, pristine_df, buy_price):
     original_start = pristine_df.iloc[-1]
 
@@ -160,7 +164,7 @@ def calculate_observation(preprocessed_df, pristine_df, buy_price):
 
 def test_preprocess_invert_preprocess(original_df):
     from sklearn.metrics import mean_absolute_error
-    preprocessed_df, scaler = __preprocess(original_df)
+    preprocessed_df, scaler = preprocess_scale(original_df)
 
     # Assume that 'original_start' is the first row of the original DataFrame
     original_start = original_df.iloc[0]
@@ -186,7 +190,7 @@ def test_orig_val(dataset):
     # For the second range, it's range_orig.iloc[500].
 
     range_orig = dataset.iloc[2000:3000]
-    range_preproc, s = __preprocess(range_orig)
+    range_preproc, s = preprocess_scale(range_orig)
 
     # Inverted for the whole preprocessed range
     range1_inv = __invert_preprocess(range_orig.iloc[0], s, range_preproc)
