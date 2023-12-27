@@ -21,7 +21,7 @@ MODEL_INPUT_IN_OBSERVATION = 64
 SKIP_STEPS = 1024 + MODEL_INPUT_IN_OBSERVATION
 
 TICKERS = [
-    "NEARUSDT", "SOLUSDT", "BTCFDUSD", "BTCUSDT", "ETHUSDT"
+    "NEARUSDT", "SOLUSDT", "BTCUSDT", "ETHUSDT", "MOVRUSDT"
 ]
 
 
@@ -68,7 +68,7 @@ def full_preprocess(df: pd.DataFrame, scaler=None):
 def __full_handle_tickers(df_tickers):
     datasets = []
 
-    for df_ticker in df_tickers:
+    for df_ticker, _ in df_tickers:
         dataset = df_ticker.loc[:, OHLC_COLUMNS].astype(np.float32)
         dataset.index = pd.to_datetime(df_ticker["Open time"], unit='ms')
         dataset_with_features = preprocess_add_features(pd.DataFrame(dataset, columns=OHLC_COLUMNS))
@@ -80,9 +80,9 @@ def __full_handle_tickers(df_tickers):
 
     results = []
 
-    for dataset in datasets:
+    for i, dataset in enumerate(datasets):
         df_scaled, _ = preprocess_scale(dataset, combined_scaler)
-        results.append((df_scaled, dataset, combined_scaler))
+        results.append((df_scaled, dataset, combined_scaler, df_tickers[i][1]))
 
     return results
 
@@ -217,7 +217,7 @@ def __download_data(refresh=True):
     if refresh:
         data_dumper.dump_data(tickers=TICKERS, date_start=datetime.date(2020, 1, 1))
 
-    return list(map(lambda ticker: __get_df_for_ticker(ticker), TICKERS))
+    return list(zip(map(lambda ticker: __get_df_for_ticker(ticker), TICKERS), TICKERS))
 
 
 def __get_df_for_ticker(ticker):
