@@ -16,10 +16,7 @@ class CustomEnv(gym.Env):
         super().__init__()
 
         if random_gen is None:
-            if n_envs is not None and seed is not None:
-                new_seed = seed + os.getpid() % n_envs
-            else:
-                new_seed = os.getpid()
+            new_seed = seed + os.getpid() % n_envs
             self.random_gen = random.Random(new_seed)
             print(f"seed = {new_seed}")
         else:
@@ -51,7 +48,7 @@ class CustomEnv(gym.Env):
         self.episode_length = episode_length
         self.buy_price = None
         self.holdings = 0
-        self.cash_balance = 1000
+        self.cash_balance = 1_000_000
 
         self.model_in_observations = model_in_observations
 
@@ -100,13 +97,14 @@ class CustomEnv(gym.Env):
         portfolio_value_t_plus_1 = self.cash_balance + np.dot(curr_close, self.holdings)
         reward = (portfolio_value_t_plus_1 - portfolio_value_t - transaction_cost) / portfolio_value_t
 
-        reward = np.clip(reward, -2, 2)
+        reward = np.clip(reward, -1, 1)
 
         # Update the step
         self.current_step += 1
 
         # Check if the episode is terminated
-        terminated = len(self.episodes[self.episode_idx][0]) < self.current_step + self.model_in_observations
+        terminated = (len(self.episodes[self.episode_idx][0]) < self.current_step + self.model_in_observations
+                      or portfolio_value_t_plus_1 <= 0)
 
         # Return the step information
         return observation, reward, terminated, False, {}

@@ -37,15 +37,16 @@ def create_backtest_model_with_data(rl_model, data: pd.DataFrame, scaler: MinMax
                     if action == 1:
                         self.buy()
                         self.buy_price = curr_close
+                        print(f"bought at {self.buy_price}")
                 else:
                     if action == 2:
                         # commission = 0.001
                         # sell_fee = curr_close * (1 - commission)
                         # buy_fee = self.buy_price * (1 + commission)
                         # gain_from_trade_fee = (sell_fee - buy_fee) / buy_fee
-                        print(f"equity {self.equity}")
                         self.sell()
                         self.buy_price = None
+                        print(f"sold at {curr_close}; equity {self.equity}")
 
     backtest_dataset = preprocess_add_features(data.loc[start:end])
     return Backtest(backtest_dataset, NeuralNetStrat, commission=.001, exclusive_orders=True, cash=1_000_000)

@@ -10,7 +10,9 @@ from trading_metrics import calculate_metrics
 from util import download_and_process_data_if_available
 
 # rl_model = PPO.load("cherry-picked-best-models/rl-model-best1.pt")
-rl_model = PPO.load("cherry-picked-best-models/hs128_lstm1_net[256, 256]_ws32_700000_steps.zip")
+# rl_model = PPO.load("cherry-picked-best-models/best_model1.zip")
+# rl_model = PPO.load("cherry-picked-best-models/best_model.zip")
+rl_model = PPO.load("cherry-picked-best-models/hs128_lstm1_net[256, 256]_ws32_650000_steps.zip")
 
 df_tickers = download_and_process_data_if_available("cache/df_tickers.pkl")
 
@@ -22,7 +24,7 @@ for _, df, scaler, name in df_tickers:
 
     model_in_observations = 32
     skip_steps = 1024 + model_in_observations
-    bt = create_backtest_model_with_data(rl_model, df, scaler, "2023-09-04", "2023-09-18", model_in_observations)
+    bt = create_backtest_model_with_data(rl_model, df, scaler, "2023-09-01", "2023-10-01", model_in_observations)
     stats = bt.run()
     equity = bt._results._equity_curve["Equity"].iloc[skip_steps:]
     y = (equity - 1_000_000) / 1_000_000
