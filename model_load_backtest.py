@@ -10,7 +10,7 @@ from trading_metrics import calculate_metrics
 from util import download_and_process_data_if_available
 
 # rl_model = PPO.load("cherry-picked-best-models/rl-model-best1.pt")
-rl_model = PPO.load("cherry-picked-best-models/best_model_0.1.zip")
+rl_model = PPO.load("cherry-picked-best-models/best_model1.zip")
 
 df_tickers = download_and_process_data_if_available("cache/df_tickers.pkl")
 
@@ -20,7 +20,7 @@ for _, df, scaler, name in df_tickers:
     t = time.time()
     print(f"backtest for {name} started")
 
-    model_in_observations = 32
+    model_in_observations = 64
     skip_steps = 1024 + model_in_observations
     bt = create_backtest_model_with_data(rl_model, df, scaler, "2023-09-04", "2023-09-18", model_in_observations)
     stats = bt.run()

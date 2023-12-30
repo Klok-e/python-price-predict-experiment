@@ -58,6 +58,8 @@ class CustomEnv(gym.Env):
         if episodes_max is not None:
             self.episodes = self.episodes[:episodes_max]
 
+        assert len(self.episodes) > 0, "No episodes"
+
     @profile
     def step(self, action):
         # Calculate the current observation and price information
