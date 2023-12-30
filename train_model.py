@@ -43,7 +43,7 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
                    gae_lambda=0.92,
                    gamma=0.8,
                    policy_kwargs=policy_kvargs,
-                   batch_size=128,
+                   batch_size=256,
                    seed=42)
 
     checkpoint_callback = CheckpointCallback(
@@ -56,7 +56,7 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
     )
     eval_env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_test,
                                                    "model_in_observations": model_window_size,
-                                                   "episodes_max": 10,
+                                                   "episodes_max": 20,
                                                    "random_gen": random.Random(42)},
                             seed=42,
                             vec_env_cls=SubprocVecEnv)
@@ -64,7 +64,7 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
                                  best_model_save_path=f"rl-model/{model_save_name}/best-model",
                                  log_path=f"rl-model/{model_save_name}/best-model/results",
                                  eval_freq=max(100_000 // n_envs, 1), verbose=1,
-                                 n_eval_episodes=10)
+                                 n_eval_episodes=20)
 
     rl_model.learn(total_timesteps=timesteps, callback=[checkpoint_callback, eval_callback])
 

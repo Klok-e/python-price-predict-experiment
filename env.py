@@ -97,7 +97,7 @@ class CustomEnv(gym.Env):
         portfolio_value_t_plus_1 = self.cash_balance + np.dot(curr_close, self.holdings)
         reward = (portfolio_value_t_plus_1 - portfolio_value_t - transaction_cost) / portfolio_value_t
 
-        reward = np.clip(reward, -1, 1)
+        reward = np.clip(reward, -0.2, 0.2) * 5
 
         # Update the step
         self.current_step += 1
@@ -113,9 +113,9 @@ class CustomEnv(gym.Env):
     def reset(self, seed=None, options=None):
         self.episode_idx += 1
         if self.episode_idx > len(self.episodes) - 1:
-            self.episode_idx = 0
             self.random_gen.shuffle(self.episodes)
-            print("All episodes finished")
+            print(f"All {self.episode_idx + 1} episodes finished")
+            self.episode_idx = 0
 
         self.current_step = 0
 
