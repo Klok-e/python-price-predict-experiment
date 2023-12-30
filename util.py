@@ -80,7 +80,7 @@ def __full_handle_tickers(df_tickers):
 
     for i, dataset in enumerate(datasets):
         df_scaled, _ = preprocess_scale(dataset, combined_scaler)
-        results.append((df_scaled, dataset, combined_scaler, df_tickers[i][1]))
+        results.append((df_scaled, dataset.iloc[1:], combined_scaler, df_tickers[i][1]))
 
     return results
 

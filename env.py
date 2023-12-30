@@ -9,8 +9,8 @@ from util import calculate_observation, OBS_PRICES_SEQUENCE, OBS_OTHER
 
 
 class CustomEnv(gym.Env):
-    def __init__(self, df_tickers, episode_length=1024,
-                 commission=0.001, model_in_observations=64):
+    def __init__(self, df_tickers, episode_length=1024, episodes_max=None,
+                 commission=0.001, model_in_observations=64, random_gen=random.Random()):
         super().__init__()
 
         self.commission = commission
@@ -35,18 +35,27 @@ class CustomEnv(gym.Env):
 
         self.df_tickers = df_tickers
         self.episode_length = episode_length
-        self.current_step = 0
-        self.episode_start_index = 0
-        self.episode_current_ticker = 0
         self.buy_price = None
 
         self.holdings = 0
         self.cash_balance = 1000
 
         self.model_in_observations = model_in_observations
-        self.skip_steps = 1024 + self.model_in_observations
 
-    @profile
+        self.current_step = 0
+        self.episode_idx = 0
+        self.episodes = []
+        for ticker in df_tickers:
+            for start_index in range(0, len(ticker[0]), self.episode_length):
+                if episodes_max is not None and episodes_max >= len(self.episodes):
+                    break
+                self.episodes.append((ticker[0].iloc[start_index:start_index + self.episode_length],
+                                      ticker[1].iloc[start_index:start_index + self.episode_length],
+                                      ticker[2],
+                                      ticker[3],))
+        random_gen.shuffle(self.episodes)
+
+    # @profile
     def step(self, action):
         # Update the step
         self.current_step += 1
@@ -55,7 +64,6 @@ class CustomEnv(gym.Env):
         observation, curr_close, prev_close = self.calculate_observation()
 
         # Initialize reward and transaction cost
-        reward = 0
         transaction_cost = 0
 
         # Define the actions
@@ -83,18 +91,18 @@ class CustomEnv(gym.Env):
         # Return the step information
         return observation, reward, terminated, False, {}
 
-    @profile
+    # @profile
     def reset(self, seed=None, options=None):
+        self.episode_idx += 1
+        if self.episode_idx > len(self.episodes) - 1:
+            self.episode_idx = 0
+
         self.current_step = 0
         self.buy_price = None
-        self.episode_current_ticker = random.randrange(0, len(self.df_tickers))
-        self.episode_start_index = random.randint(self.skip_steps,
-                                                  len(self.df_tickers[self.episode_current_ticker][
-                                                          0]) - self.episode_length - 1)
 
-        print(f"ticker {self.episode_current_ticker}; index {self.episode_start_index}")
+        print(f"episode {self.episode_idx}; ticker {self.episodes[self.episode_idx][3]}")
 
-        observation, _, _ = self.calculate_observation(self.current_step, self.episode_current_ticker)
+        observation, _, _ = self.calculate_observation()
         info = {}
         return observation, info
 
@@ -104,16 +112,11 @@ class CustomEnv(gym.Env):
     def close(self):
         pass
 
-    @profile
+    # @profile
     def calculate_observation(self):
-        index_start = self.episode_start_index + self.current_step - self.skip_steps
-        index_end = self.episode_start_index + self.current_step
-
-        prepro_dataset = self.df_tickers[self.episode_current_ticker][0]
-        pristine_dataset = self.df_tickers[self.episode_current_ticker][1]
-        prepro_df = prepro_dataset.iloc[index_start:index_end]
-        pristine_df = pristine_dataset.iloc[index_start:index_end]
-        observation, curr_close, prev_close = calculate_observation(prepro_df, pristine_df, self.buy_price,
+        prepro_dataset = self.episodes[self.episode_idx][0]
+        pristine_dataset = self.episodes[self.episode_idx][1]
+        observation, curr_close, prev_close = calculate_observation(prepro_dataset, pristine_dataset, self.buy_price,
                                                                     self.model_in_observations)
 
         return observation, curr_close, prev_close
