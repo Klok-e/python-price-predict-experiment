@@ -86,6 +86,8 @@ class CustomEnv(gym.Env):
         portfolio_value_t_plus_1 = self.cash_balance + np.dot(curr_close, self.holdings)
         reward = (portfolio_value_t_plus_1 - portfolio_value_t - transaction_cost) / portfolio_value_t
 
+        reward = np.clip(reward, -1, 0.5)
+
         # Update the step
         self.current_step += 1
 
