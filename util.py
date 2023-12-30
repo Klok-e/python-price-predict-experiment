@@ -17,8 +17,6 @@ OHLC_COLUMNS = [
 
 OBS_OTHER = "other"
 OBS_PRICES_SEQUENCE = "prices_sequence"
-MODEL_INPUT_IN_OBSERVATION = 64
-SKIP_STEPS = 1024 + MODEL_INPUT_IN_OBSERVATION
 
 TICKERS = [
     "NEARUSDT", "SOLUSDT", "BTCUSDT", "ETHUSDT", "MOVRUSDT"
@@ -142,7 +140,7 @@ def preprocess_add_features(df):
 
 
 @profile
-def calculate_observation(preprocessed_df, pristine_df, buy_price):
+def calculate_observation(preprocessed_df, pristine_df, buy_price, model_in_observations: int):
     original_start = pristine_df.iloc[-1]
 
     curr_close = original_start.Close
@@ -152,7 +150,7 @@ def calculate_observation(preprocessed_df, pristine_df, buy_price):
         current_gain = 0
     else:
         current_gain = ((curr_close - buy_price) / buy_price)
-    previous_prices = preprocessed_df.iloc[-MODEL_INPUT_IN_OBSERVATION:].to_numpy()  # shape = (N, 7)
+    previous_prices = preprocessed_df.iloc[-model_in_observations:].to_numpy()  # shape = (N, 7)
     buy_status = 1 if buy_price is not None else 0
     observation = {
         OBS_PRICES_SEQUENCE: previous_prices.astype(np.float32),

@@ -5,10 +5,13 @@ from backtesting import Backtest, Strategy
 from line_profiler import profile
 from sklearn.preprocessing import MinMaxScaler
 
-from util import SKIP_STEPS, calculate_observation, preprocess_add_features, preprocess_scale
+from util import calculate_observation, preprocess_add_features, preprocess_scale
 
 
-def create_backtest_model_with_data(rl_model, data: pd.DataFrame, scaler: MinMaxScaler, start: str, end: str):
+def create_backtest_model_with_data(rl_model, data: pd.DataFrame, scaler: MinMaxScaler, start: str, end: str,
+                                    model_in_observations: int):
+    skip_steps = 1024 + model_in_observations
+
     class NeuralNetStrat(Strategy):
         def __init__(self, broker, data, params):
             super().__init__(broker, data, params)
@@ -23,12 +26,13 @@ def create_backtest_model_with_data(rl_model, data: pd.DataFrame, scaler: MinMax
             if self.equity <= 1:
                 return
 
-            if len(self.data) > SKIP_STEPS:
-                df = self.data.df.iloc[-SKIP_STEPS:].copy()
+            if len(self.data) > skip_steps:
+                df = self.data.df.iloc[-skip_steps:].copy()
                 df.drop(columns=["Volume"], inplace=True)
 
                 preprocessed, _ = preprocess_scale(df, scaler)
-                observation, curr_close, _ = calculate_observation(preprocessed, df, self.buy_price)
+                observation, curr_close, _ = calculate_observation(preprocessed, df, self.buy_price,
+                                                                   model_in_observations)
 
                 action, _ = rl_model.predict(observation, deterministic=True)
                 if self.buy_price is None:

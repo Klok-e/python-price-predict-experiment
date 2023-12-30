@@ -1,15 +1,16 @@
 import random
+
 import gymnasium as gym
 import numpy as np
-import pandas as pd
 from gymnasium import spaces
+from line_profiler.explicit_profiler import profile
 
-from util import MultiScaler, calculate_observation, OBS_PRICES_SEQUENCE, OBS_OTHER, SKIP_STEPS
+from util import calculate_observation, OBS_PRICES_SEQUENCE, OBS_OTHER
 
 
 class CustomEnv(gym.Env):
     def __init__(self, df_tickers, episode_length=1024,
-                 commission=0.001):
+                 commission=0.001, model_in_observations=64):
         super().__init__()
 
         self.commission = commission
@@ -19,7 +20,7 @@ class CustomEnv(gym.Env):
 
         prepro_dataset = df_tickers[0][0]
         pristine_dataset = df_tickers[0][1]
-        self.FEATURES_SHAPE = calculate_observation(prepro_dataset, pristine_dataset, None)[0]
+        self.FEATURES_SHAPE = calculate_observation(prepro_dataset, pristine_dataset, None, model_in_observations)[0]
         self.FEATURES_SHAPE = {k: v.shape for k, v in self.FEATURES_SHAPE.items()}
         print(f"obs length = {self.FEATURES_SHAPE}")
 
@@ -35,19 +36,23 @@ class CustomEnv(gym.Env):
         self.df_tickers = df_tickers
         self.episode_length = episode_length
         self.current_step = 0
-        self.current_ticker = 0
-        self.start_index = 0
+        self.episode_start_index = 0
+        self.episode_current_ticker = 0
         self.buy_price = None
 
         self.holdings = 0
         self.cash_balance = 1000
 
+        self.model_in_observations = model_in_observations
+        self.skip_steps = 1024 + self.model_in_observations
+
+    @profile
     def step(self, action):
         # Update the step
         self.current_step += 1
 
         # Calculate the current observation and price information
-        observation, curr_close, prev_close = self.calculate_observation(self.current_step, self.current_ticker)
+        observation, curr_close, prev_close = self.calculate_observation()
 
         # Initialize reward and transaction cost
         reward = 0
@@ -78,16 +83,18 @@ class CustomEnv(gym.Env):
         # Return the step information
         return observation, reward, terminated, False, {}
 
+    @profile
     def reset(self, seed=None, options=None):
         self.current_step = 0
         self.buy_price = None
-        self.current_ticker = random.randrange(0, len(self.df_tickers))
-        self.start_index = random.randint(SKIP_STEPS,
-                                          len(self.df_tickers[self.current_ticker][0]) - self.episode_length - 1)
+        self.episode_current_ticker = random.randrange(0, len(self.df_tickers))
+        self.episode_start_index = random.randint(self.skip_steps,
+                                                  len(self.df_tickers[self.episode_current_ticker][
+                                                          0]) - self.episode_length - 1)
 
-        print(f"ticker {self.current_ticker}; index {self.start_index}")
+        print(f"ticker {self.episode_current_ticker}; index {self.episode_start_index}")
 
-        observation, _, _ = self.calculate_observation(self.current_step, self.current_ticker)
+        observation, _, _ = self.calculate_observation(self.current_step, self.episode_current_ticker)
         info = {}
         return observation, info
 
@@ -97,14 +104,16 @@ class CustomEnv(gym.Env):
     def close(self):
         pass
 
-    def calculate_observation(self, current_step, current_ticker):
-        index_start = self.start_index + current_step - SKIP_STEPS
-        index_end = self.start_index + current_step
+    @profile
+    def calculate_observation(self):
+        index_start = self.episode_start_index + self.current_step - self.skip_steps
+        index_end = self.episode_start_index + self.current_step
 
-        prepro_dataset = self.df_tickers[current_ticker][0]
-        pristine_dataset = self.df_tickers[current_ticker][1]
+        prepro_dataset = self.df_tickers[self.episode_current_ticker][0]
+        pristine_dataset = self.df_tickers[self.episode_current_ticker][1]
         prepro_df = prepro_dataset.iloc[index_start:index_end]
         pristine_df = pristine_dataset.iloc[index_start:index_end]
-        observation, curr_close, prev_close = calculate_observation(prepro_df, pristine_df, self.buy_price)
+        observation, curr_close, prev_close = calculate_observation(prepro_df, pristine_df, self.buy_price,
+                                                                    self.model_in_observations)
 
         return observation, curr_close, prev_close

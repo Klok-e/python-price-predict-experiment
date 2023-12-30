@@ -6,9 +6,8 @@ from matplotlib import dates as mdates
 from stable_baselines3 import PPO
 
 from backtest import create_backtest_model_with_data
-from trading_metrics import max_earning_rate, maximum_pullback, average_profitability_per_trade, sharpe_ratio, \
-    cumulative_return, calculate_metrics
-from util import download_and_process_data_if_available, SKIP_STEPS
+from trading_metrics import calculate_metrics
+from util import download_and_process_data_if_available
 
 rl_model = PPO.load("cherry-picked-best-models/rl-model-best1.pt")
 
@@ -20,9 +19,11 @@ for _, df, scaler, name in df_tickers:
     t = time.time()
     print(f"backtest for {name} started")
 
-    bt = create_backtest_model_with_data(rl_model, df, scaler, "2023-5-1", "2023-5-14")
+    model_in_observations = 64
+    skip_steps = 1024 + model_in_observations
+    bt = create_backtest_model_with_data(rl_model, df, scaler, "2023-5-1", "2023-5-14", model_in_observations)
     stats = bt.run()
-    equity = bt._results._equity_curve["Equity"].iloc[SKIP_STEPS:]
+    equity = bt._results._equity_curve["Equity"].iloc[skip_steps:]
     y = (equity - 1_000_000) / 1_000_000
     plt.plot(y, label=name)
 
