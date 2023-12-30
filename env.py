@@ -1,3 +1,4 @@
+import os
 import random
 
 import gymnasium as gym
@@ -10,7 +11,7 @@ from util import calculate_observation, OBS_PRICES_SEQUENCE, OBS_OTHER
 
 class CustomEnv(gym.Env):
     def __init__(self, df_tickers, episode_length=1024, episodes_max=None,
-                 commission=0.001, model_in_observations=64, random_gen=random.Random()):
+                 commission=0.001, model_in_observations=64, random_gen=random.Random(os.getpid())):
         super().__init__()
 
         self.commission = commission

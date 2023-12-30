@@ -25,8 +25,7 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
         map(lambda ticker: (ticker[0].loc[split_date:], ticker[1].loc[split_date:], ticker[2], ticker[3]), df_tickers))
 
     env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_train,
-                                              "model_in_observations": model_window_size,
-                                              "random_gen": random.Random(42)},
+                                              "model_in_observations": model_window_size},
                        n_envs=n_envs, seed=42, vec_env_cls=SubprocVecEnv)
 
     policy_kvargs = dict(activation_fn=torch.nn.LeakyReLU,
