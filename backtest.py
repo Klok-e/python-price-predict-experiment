@@ -43,7 +43,7 @@ def create_backtest_model_with_data(rl_model, data: pd.DataFrame, scaler: MinMax
                         # sell_fee = curr_close * (1 - commission)
                         # buy_fee = self.buy_price * (1 + commission)
                         # gain_from_trade_fee = (sell_fee - buy_fee) / buy_fee
-                        # print(f"equity {self.equity}")
+                        print(f"equity {self.equity}")
                         self.sell()
                         self.buy_price = None
 

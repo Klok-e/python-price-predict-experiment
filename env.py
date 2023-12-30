@@ -11,8 +11,19 @@ from util import calculate_observation, OBS_PRICES_SEQUENCE, OBS_OTHER
 
 class CustomEnv(gym.Env):
     def __init__(self, df_tickers, episode_length=1024, episodes_max=None,
-                 commission=0.001, model_in_observations=64, random_gen=random.Random(os.getpid())):
+                 commission=0.001, model_in_observations=64, seed=None, n_envs=None,
+                 random_gen=None):
         super().__init__()
+
+        if random_gen is None:
+            if n_envs is not None and seed is not None:
+                new_seed = seed + os.getpid() % n_envs
+            else:
+                new_seed = os.getpid()
+            self.random_gen = random.Random(new_seed)
+            print(f"seed = {new_seed}")
+        else:
+            self.random_gen = random_gen
 
         self.commission = commission
 
@@ -54,7 +65,7 @@ class CustomEnv(gym.Env):
                                       ticker[2],
                                       ticker[3],))
 
-        random_gen.shuffle(self.episodes)
+        self.random_gen.shuffle(self.episodes)
         if episodes_max is not None:
             self.episodes = self.episodes[:episodes_max]
 
@@ -89,7 +100,7 @@ class CustomEnv(gym.Env):
         portfolio_value_t_plus_1 = self.cash_balance + np.dot(curr_close, self.holdings)
         reward = (portfolio_value_t_plus_1 - portfolio_value_t - transaction_cost) / portfolio_value_t
 
-        reward = np.clip(reward, -1, 1)
+        reward = np.clip(reward, -2, 2)
 
         # Update the step
         self.current_step += 1
@@ -105,6 +116,9 @@ class CustomEnv(gym.Env):
         self.episode_idx += 1
         if self.episode_idx > len(self.episodes) - 1:
             self.episode_idx = 0
+            self.random_gen.shuffle(self.episodes)
+            print("All episodes finished")
+
         self.current_step = 0
 
         self.buy_price = None
