@@ -71,7 +71,7 @@ if __name__ == "__main__":
     hidden_size_list = [128]
     lstm_layers_list = [1]
     arch_list = [[256, 256]]
-    window_size_list = [64]
+    window_size_list = [32]
     for hidden_size in hidden_size_list:
         for lstm_layers in lstm_layers_list:
             for arch in arch_list:
