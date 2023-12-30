@@ -17,7 +17,7 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
                 model_window_size: int, n_envs: int):
     model_save_name = f"hs{hidden_size}_lstm{lstm_layers}_net{net_arch}_ws{model_window_size}"
 
-    split_date = '2023-11-01'
+    split_date = "2023-09-04"
 
     df_tickers_train = list(
         map(lambda ticker: (ticker[0].loc[:split_date], ticker[1].loc[:split_date], ticker[2], ticker[3]), df_tickers))

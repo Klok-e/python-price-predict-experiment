@@ -211,7 +211,7 @@ def __download_data(refresh=True):
     print(data_dumper.get_list_all_trading_pairs())
 
     if refresh:
-        data_dumper.dump_data(tickers=TICKERS, date_start=datetime.date(2020, 1, 1))
+        data_dumper.dump_data(tickers=TICKERS, date_start=datetime.date(2019, 1, 1))
 
     return list(zip(map(lambda ticker: __get_df_for_ticker(ticker), TICKERS), TICKERS))
 
