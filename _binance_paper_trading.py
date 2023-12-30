@@ -128,7 +128,7 @@ class NeuralNetStrat:
 
     def next(self, data):
         df = data.copy()
-        observation, curr_close, _ = calculate_observation(df, self.my_model, self.scaler, self.buy_price)
+        observation, curr_close, _ = calculate_observation(df, self.my_model, self.scaler)
 
         action, _ = self.rl_model.predict(observation, deterministic=True)
 

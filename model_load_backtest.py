@@ -9,7 +9,8 @@ from backtest import create_backtest_model_with_data
 from trading_metrics import calculate_metrics
 from util import download_and_process_data_if_available
 
-rl_model = PPO.load("cherry-picked-best-models/rl-model-best1.pt")
+# rl_model = PPO.load("cherry-picked-best-models/rl-model-best1.pt")
+rl_model = PPO.load("cherry-picked-best-models/best_model.zip")
 
 df_tickers = download_and_process_data_if_available("cache/df_tickers.pkl")
 

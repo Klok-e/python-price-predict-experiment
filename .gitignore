@@ -4,6 +4,7 @@ darts_logs/
 lightning_logs/
 model-weights-*
 rl_model-*
+rl_model/
 rl-model-best-model/
 rl-model-bestmodel/
 rl-model-checkpoints/

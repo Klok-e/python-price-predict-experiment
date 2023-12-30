@@ -15,6 +15,8 @@ from util import download_and_process_data_if_available
 @profile
 def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[int], timesteps: int,
                 model_window_size: int):
+    model_save_dir = f"rl-model/hs{hidden_size}_lstm{lstm_layers}_net{net_arch}_ws{model_window_size}"
+
     split_date = '2023-11-01'
 
     df_tickers_train = list(
@@ -22,10 +24,12 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
     df_tickers_test = list(
         map(lambda ticker: (ticker[0].loc[split_date:], ticker[1].loc[split_date:], ticker[2], ticker[3]), df_tickers))
 
+    n_envs = 5
+
     env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_train,
                                               "model_in_observations": model_window_size,
                                               "random_gen": random.Random(42)},
-                       n_envs=5, seed=42, vec_env_cls=SubprocVecEnv)
+                       n_envs=n_envs, seed=42, vec_env_cls=SubprocVecEnv)
 
     policy_kvargs = dict(activation_fn=torch.nn.LeakyReLU,
                          features_extractor_class=LSTMExtractor,
@@ -42,9 +46,9 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
                    policy_kwargs=policy_kvargs)
 
     checkpoint_callback = CheckpointCallback(
-        save_freq=100_000,
-        save_path="rl-model/checkpoints/",
-        name_prefix="rl_model",
+        save_freq=max(100_000 // n_envs, 1),
+        save_path=f"{model_save_dir}-model/checkpoints/",
+        name_prefix=model_save_dir,
         verbose=1,
         save_vecnormalize=True,
         save_replay_buffer=True
@@ -55,8 +59,10 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
                                                    "random_gen": random.Random(42)},
                             seed=42,
                             vec_env_cls=SubprocVecEnv)
-    eval_callback = EvalCallback(eval_env, best_model_save_path="rl-model/best-model/best_model",
-                                 log_path="rl-model/best-model/results", eval_freq=100_000, verbose=1,
+    eval_callback = EvalCallback(eval_env,
+                                 best_model_save_path=f"{model_save_dir}/best-model/best_model",
+                                 log_path=f"{model_save_dir}/best-model/results",
+                                 eval_freq=max(100_000 // n_envs, 1), verbose=1,
                                  n_eval_episodes=4)
 
     rl_model.learn(total_timesteps=timesteps, callback=[checkpoint_callback, eval_callback])

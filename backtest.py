@@ -21,7 +21,7 @@ def create_backtest_model_with_data(rl_model, data: pd.DataFrame, scaler: MinMax
         def init(self):
             pass
 
-        @profile
+        # @profile
         def next(self):
             if self.equity <= 1:
                 return
@@ -31,8 +31,8 @@ def create_backtest_model_with_data(rl_model, data: pd.DataFrame, scaler: MinMax
                 df.drop(columns=["Volume"], inplace=True)
 
                 preprocessed, _ = preprocess_scale(df, scaler)
-                observation, curr_close, _ = calculate_observation(preprocessed, df, self.buy_price,
-                                                                   model_in_observations)
+                observation, curr_close, _ = calculate_observation(preprocessed[:model_in_observations],
+                                                                   df[:model_in_observations], self.buy_price)
 
                 action, _ = rl_model.predict(observation, deterministic=True)
                 if self.buy_price is None:
