@@ -56,7 +56,7 @@ class CustomEnv(gym.Env):
                                       ticker[3],))
         random_gen.shuffle(self.episodes)
 
-    # @profile
+    @profile
     def step(self, action):
         # Calculate the current observation and price information
         observation, curr_close, prev_close = self.calculate_observation()
@@ -94,7 +94,7 @@ class CustomEnv(gym.Env):
         # Return the step information
         return observation, reward, terminated, False, {}
 
-    # @profile
+    @profile
     def reset(self, seed=None, options=None):
         self.episode_idx += 1
         if self.episode_idx > len(self.episodes) - 1:
@@ -117,7 +117,7 @@ class CustomEnv(gym.Env):
     def close(self):
         pass
 
-    # @profile
+    @profile
     def calculate_observation(self):
         prepro_dataset = self.episodes[self.episode_idx][0][
                          self.current_step:self.current_step + self.model_in_observations]

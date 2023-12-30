@@ -21,7 +21,7 @@ def create_backtest_model_with_data(rl_model, data: pd.DataFrame, scaler: MinMax
         def init(self):
             pass
 
-        # @profile
+        @profile
         def next(self):
             if self.equity <= 1:
                 return

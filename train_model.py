@@ -78,4 +78,4 @@ if __name__ == "__main__":
             for arch in arch_list:
                 for window_size in window_size_list:
                     print(f"hidden_size {hidden_size}, lstm_layers {lstm_layers}, window_size {window_size}")
-                    train_model(df_tickers, hidden_size, lstm_layers, arch, 2_000_000, window_size, 5)
+                    train_model(df_tickers, hidden_size, lstm_layers, arch, 1_000_000, window_size, 5)
