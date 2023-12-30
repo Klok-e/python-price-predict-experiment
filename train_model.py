@@ -52,7 +52,7 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
     )
     eval_env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_test,
                                                    "model_in_observations": model_window_size,
-                                                   "episodes_max": 4,
+                                                   "episodes_max": 5,
                                                    "random_gen": random.Random(42)},
                             seed=42,
                             vec_env_cls=SubprocVecEnv)
@@ -60,7 +60,7 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
                                  best_model_save_path=f"rl-model/{model_save_name}/best-model",
                                  log_path=f"rl-model/{model_save_name}/best-model/results",
                                  eval_freq=max(50_000 // n_envs, 1), verbose=1,
-                                 n_eval_episodes=4)
+                                 n_eval_episodes=5)
 
     rl_model.learn(total_timesteps=timesteps, callback=[checkpoint_callback, eval_callback])
 
