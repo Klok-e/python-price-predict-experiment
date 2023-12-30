@@ -15,7 +15,7 @@ from util import download_and_process_data_if_available
 @profile
 def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[int], timesteps: int,
                 model_window_size: int, n_envs: int):
-    model_save_dir = f"rl-model/hs{hidden_size}_lstm{lstm_layers}_net{net_arch}_ws{model_window_size}"
+    model_save_name = f"hs{hidden_size}_lstm{lstm_layers}_net{net_arch}_ws{model_window_size}"
 
     split_date = '2023-11-01'
 
@@ -44,8 +44,8 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
 
     checkpoint_callback = CheckpointCallback(
         save_freq=max(50_000 // n_envs, 1),
-        save_path=f"{model_save_dir}/checkpoints/",
-        name_prefix=model_save_dir,
+        save_path=f"rl-model/{model_save_name}/checkpoints/",
+        name_prefix=model_save_name,
         verbose=1,
         save_vecnormalize=True,
         save_replay_buffer=True
@@ -57,8 +57,8 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
                             seed=42,
                             vec_env_cls=SubprocVecEnv)
     eval_callback = EvalCallback(eval_env,
-                                 best_model_save_path=f"{model_save_dir}/best-model",
-                                 log_path=f"{model_save_dir}/best-model/results",
+                                 best_model_save_path=f"rl-model/{model_save_name}/best-model",
+                                 log_path=f"rl-model/{model_save_name}/best-model/results",
                                  eval_freq=max(50_000 // n_envs, 1), verbose=1,
                                  n_eval_episodes=4)
 
