@@ -48,13 +48,14 @@ class CustomEnv(gym.Env):
         self.episodes = []
         for ticker in df_tickers:
             for start_index in range(0, len(ticker[0]), self.episode_length):
-                if episodes_max is not None and episodes_max <= len(self.episodes):
-                    break
                 self.episodes.append((ticker[0].iloc[start_index:start_index + self.episode_length],
                                       ticker[1].iloc[start_index:start_index + self.episode_length],
                                       ticker[2],
                                       ticker[3],))
+
         random_gen.shuffle(self.episodes)
+        if episodes_max is not None:
+            self.episodes = self.episodes[:episodes_max]
 
     @profile
     def step(self, action):
