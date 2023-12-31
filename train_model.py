@@ -14,7 +14,7 @@ count = 0
 
 # @profile
 def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[int], timesteps: int,
-                model_window_size: int, n_envs: int):
+                model_window_size: int, n_envs: int, directory: str):
     model_save_name = f"hs{hidden_size}_lstm{lstm_layers}_net{net_arch}_ws{model_window_size}"
 
     split_date = "2023-06-01"
@@ -36,7 +36,7 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
     # {'gamma': 0.8, 'ent_coef': 0.02, 'gae_lambda': 0.92}
     rl_model = PPO("MultiInputPolicy", env,
                    verbose=1,
-                   tensorboard_log="./tensorboard/",
+                   tensorboard_log=f"{directory}/tensorboard/",
                    ent_coef=0.02,
                    gae_lambda=0.92,
                    gamma=0.9,
@@ -46,7 +46,7 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
 
     checkpoint_callback = CheckpointCallback(
         save_freq=max(50_000 // n_envs, 1),
-        save_path=f"rl-model/{model_save_name}/checkpoints/",
+        save_path=f"{directory}/rl-model/{model_save_name}/checkpoints/",
         name_prefix=model_save_name,
         verbose=1,
         save_vecnormalize=True,
@@ -58,8 +58,8 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
                             seed=42,
                             vec_env_cls=SubprocVecEnv)
     eval_callback = EvalCallback(eval_env,
-                                 best_model_save_path=f"rl-model/{model_save_name}/best-model",
-                                 log_path=f"rl-model/{model_save_name}/best-model/results",
+                                 best_model_save_path=f"{directory}/rl-model/{model_save_name}/best-model",
+                                 log_path=f"{directory}/rl-model/{model_save_name}/best-model/results",
                                  eval_freq=max(100_000 // n_envs, 1), verbose=1,
                                  n_eval_episodes=20)
 
@@ -85,4 +85,4 @@ if __name__ == "__main__":
             for arch in arch_list:
                 for window_size in window_size_list:
                     print(f"hidden_size {hidden_size}, lstm_layers {lstm_layers}, window_size {window_size}")
-                    train_model(df_tickers, hidden_size, lstm_layers, arch, 500_000, window_size, 5)
+                    train_model(df_tickers, hidden_size, lstm_layers, arch, 500_000, window_size, 5, "data")
