@@ -18,7 +18,7 @@ OBS_OTHER = "other"
 OBS_PRICES_SEQUENCE = "prices_sequence"
 
 TICKERS = [
-    "NEARUSDT", "SOLUSDT", "BTCUSDT", "ETHUSDT", "MOVRUSDT"
+    "NEARUSDT", "SOLUSDT", "BTCUSDT", "ETHUSDT", "BNBUSDT"
 ]
 
 
