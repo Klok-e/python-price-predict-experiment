@@ -37,11 +37,11 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
     rl_model = PPO("MultiInputPolicy", env,
                    verbose=1,
                    tensorboard_log="./tensorboard/",
-                   ent_coef=0.01,
+                   ent_coef=0.02,
                    gae_lambda=0.92,
-                   gamma=0.8,
+                   gamma=0.98,
                    policy_kwargs=policy_kvargs,
-                   batch_size=256,
+                   batch_size=1024,
                    seed=42)
 
     checkpoint_callback = CheckpointCallback(
@@ -65,6 +65,9 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
 
     rl_model.learn(total_timesteps=timesteps, callback=[checkpoint_callback, eval_callback])
 
+    env.unwrapped.close()
+    eval_env.unwrapped.close()
+
 
 if __name__ == "__main__":
     df_tickers = download_and_process_data_if_available("cache/df_tickers.pkl")
@@ -73,13 +76,13 @@ if __name__ == "__main__":
     check_env(env)
     del env
 
-    hidden_size_list = [128]
-    lstm_layers_list = [1]
-    arch_list = [[256, 256]]
-    window_size_list = [32]
+    hidden_size_list = [128, 256, 512]
+    lstm_layers_list = [1, 2]
+    arch_list = [[256, 256, 256]]
+    window_size_list = [32, 64, 128]
     for hidden_size in hidden_size_list:
         for lstm_layers in lstm_layers_list:
             for arch in arch_list:
                 for window_size in window_size_list:
                     print(f"hidden_size {hidden_size}, lstm_layers {lstm_layers}, window_size {window_size}")
-                    train_model(df_tickers, hidden_size, lstm_layers, arch, 1_000_000, window_size, 5)
+                    train_model(df_tickers, hidden_size, lstm_layers, arch, 500_000, window_size, 5)
