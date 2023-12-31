@@ -1,26 +1,18 @@
-import os
 import random
 
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
-from line_profiler.explicit_profiler import profile
 
 from util import calculate_observation, OBS_PRICES_SEQUENCE, OBS_OTHER
 
 
 class CustomEnv(gym.Env):
     def __init__(self, df_tickers, episode_length=1024, episodes_max=None,
-                 commission=0.001, model_in_observations=64, seed=None, n_envs=None,
-                 random_gen=None):
+                 commission=0.001, model_in_observations=64):
         super().__init__()
 
-        if random_gen is None:
-            new_seed = seed + os.getpid() % n_envs
-            self.random_gen = random.Random(new_seed)
-            print(f"seed = {new_seed}")
-        else:
-            self.random_gen = random_gen
+        self.random_gen = None
 
         self.commission = commission
 
@@ -62,13 +54,9 @@ class CustomEnv(gym.Env):
                                       ticker[2],
                                       ticker[3],))
 
-        self.random_gen.shuffle(self.episodes)
-        if episodes_max is not None:
-            self.episodes = self.episodes[:episodes_max]
+        self.episodes_max = episodes_max
 
-        assert len(self.episodes) > 0, "No episodes"
-
-    @profile
+    # @profile
     def step(self, action):
         # Calculate the current observation and price information
         observation, curr_close, prev_close = self.calculate_observation()
@@ -109,12 +97,23 @@ class CustomEnv(gym.Env):
         # Return the step information
         return observation, reward, terminated, False, {}
 
-    @profile
+    # @profile
     def reset(self, seed=None, options=None):
+        if seed is not None:
+            self.random_gen = random.Random(seed)
+            self.random_gen.shuffle(self.episodes)
+            print(f"Initialized with seed {seed}")
+
+            if self.episodes_max is not None:
+                self.episodes = self.episodes[:self.episodes_max]
+                print("Max episodes cut")
+
+            assert len(self.episodes) > 0, "No episodes"
+
         self.episode_idx += 1
         if self.episode_idx > len(self.episodes) - 1:
             self.random_gen.shuffle(self.episodes)
-            print(f"All {self.episode_idx + 1} episodes finished")
+            print(f"All {self.episode_idx} episodes finished")
             self.episode_idx = 0
 
         self.current_step = 0
@@ -135,7 +134,7 @@ class CustomEnv(gym.Env):
     def close(self):
         pass
 
-    @profile
+    # @profile
     def calculate_observation(self):
         prepro_dataset = self.episodes[self.episode_idx][0][
                          self.current_step:self.current_step + self.model_in_observations]

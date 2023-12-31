@@ -5,7 +5,6 @@ import pickle
 import numpy as np
 import pandas as pd
 from binance_historical_data import BinanceDataDumper
-from line_profiler import profile
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from ta import trend, momentum
 
@@ -29,7 +28,7 @@ class MultiScaler:
         self.std = std
 
 
-@profile
+# @profile
 def preprocess_scale(df: pd.DataFrame, scaler=None):
     # Apply percentage change only to OHLC columns
     df_pct = df[OHLC_COLUMNS].pct_change()
@@ -139,7 +138,7 @@ def preprocess_add_features(df):
     return df
 
 
-@profile
+# @profile
 def calculate_observation(preprocessed_df, pristine_df, buy_price):
     curr_close = pristine_df.iloc[-1].Close
     prev_close = pristine_df.iloc[-2].Close
