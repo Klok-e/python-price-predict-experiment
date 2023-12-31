@@ -49,10 +49,12 @@ class CustomEnv(gym.Env):
         self.episodes = []
         for ticker in df_tickers:
             for start_index in range(0, len(ticker[0]), self.episode_length):
-                self.episodes.append((ticker[0].iloc[start_index:start_index + self.episode_length],
-                                      ticker[1].iloc[start_index:start_index + self.episode_length],
-                                      ticker[2],
-                                      ticker[3],))
+                if (len(ticker[0].iloc[start_index:start_index + self.episode_length]) == self.episode_length
+                        and len(ticker[1].iloc[start_index:start_index + self.episode_length]) == self.episode_length):
+                    self.episodes.append((ticker[0].iloc[start_index:start_index + self.episode_length],
+                                          ticker[1].iloc[start_index:start_index + self.episode_length],
+                                          ticker[2],
+                                          ticker[3],))
 
         self.episodes_max = episodes_max
 
