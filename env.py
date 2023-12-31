@@ -87,9 +87,6 @@ class CustomEnv(gym.Env):
 
         reward = np.clip(reward, -1, 1)
 
-        if self.holdings == 0 and action == 0:
-            reward += -0.0001
-
         # Update the step
         self.current_step += 1
 
