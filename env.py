@@ -91,8 +91,10 @@ class CustomEnv(gym.Env):
         self.current_step += 1
 
         # Check if the episode is terminated
-        terminated = (len(self.episodes[self.episode_idx][0]) < self.current_step + self.model_in_observations
-                      or portfolio_value_t_plus_1 <= 0)
+        terminated = False
+        if (len(self.episodes[self.episode_idx][0]) < self.current_step + self.model_in_observations
+                or portfolio_value_t_plus_1 <= 0):
+            terminated = True
 
         # Return the step information
         return observation, reward, terminated, False, {}
