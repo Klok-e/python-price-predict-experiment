@@ -6,6 +6,25 @@ from sklearn.preprocessing import MinMaxScaler
 from util import calculate_observation, preprocess_add_features, preprocess_scale
 
 
+class BuyAndHold(Strategy):
+    def __init__(self, broker, data, params):
+        super().__init__(broker, data, params)
+        self.buy_price = None
+        self.expected_gain = None
+
+    def init(self):
+        self.buy()
+
+    @profile
+    def next(self):
+        pass
+
+
+def create_buy_and_hold_strategy(data: pd.DataFrame, start: str, end: str):
+    backtest_dataset = preprocess_add_features(data.loc[start:end])
+    return Backtest(backtest_dataset, BuyAndHold, commission=.001, exclusive_orders=True, cash=1_000_000)
+
+
 def create_backtest_model_with_data(rl_model, data: pd.DataFrame, scaler: MinMaxScaler, start: str, end: str,
                                     model_in_observations: int):
     skip_steps = 1024 + model_in_observations
@@ -19,7 +38,7 @@ def create_backtest_model_with_data(rl_model, data: pd.DataFrame, scaler: MinMax
         def init(self):
             pass
 
-        @profile
+        # @profile
         def next(self):
             if self.equity <= 1:
                 return
