@@ -16,28 +16,28 @@ def max_earning_rate(A_x_list, A_y_list):
     """
     Calculate the Maximum Earning Rate (MER).
     Here, A_x_list and A_y_list are lists of assets at different times, with the assumption
-    that for each i, A_x_list[i] corresponds to a later time than A_y_list[i].
+    that for each i, A_x_list[i] corresponds to a later time than A_y_list[i], and A_y_list[i] < A_x_list[i].
 
     :param A_x_list: List of total assets of the strategy at time x
-    :param A_y_list: List of total assets of the strategy at time y, where y < x
+    :param A_y_list: List of total assets of the strategy at time y
     :return: Maximum Earning Rate
     """
-    return max([(A_x - A_y) / A_y for A_x, A_y in zip(A_x_list, A_y_list)])
+    earning_rates = [(A_x - A_y) / A_y for A_x, A_y in zip(A_x_list, A_y_list) if A_y < A_x]
+    return max(earning_rates) if earning_rates else 0
 
 
 def maximum_pullback(A_x_list, A_y_list):
     """
     Calculate the Maximum Pullback (MPB).
     Here, A_x_list and A_y_list are lists of assets at different times, with the assumption
-    that for each i, A_x_list[i] corresponds to a later time than A_y_list[i].
+    that for each i, A_x_list[i] corresponds to a later time than A_y_list[i], and A_y_list[i] > A_x_list[i].
 
     :param A_x_list: List of total assets of the strategy at time x
-    :param A_y_list: List of total assets of the strategy at time y, where y > x
+    :param A_y_list: List of total assets of the strategy at time y
     :return: Maximum Pullback
     """
-    # In this case, we look for the maximum pullback, so we're interested in the instances where A_x < A_y
-    pullbacks = [(A_y - A_x) / A_y for A_x, A_y in zip(A_x_list, A_y_list) if A_x < A_y]
-    return max(pullbacks) if pullbacks else 0  # Return 0 if there are no pullbacks
+    pullbacks = [(A_y - A_x) / A_y for A_x, A_y in zip(A_x_list, A_y_list) if A_y > A_x]
+    return max(pullbacks) if pullbacks else 0
 
 
 def average_profitability_per_trade(P_end, P_0, NT):
