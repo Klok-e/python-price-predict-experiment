@@ -47,16 +47,18 @@ def create_backtest_model_with_data(rl_model, data: pd.DataFrame, scaler: MinMax
                 df = self.data.df.iloc[-skip_steps:].copy()
                 df.drop(columns=["Volume"], inplace=True)
 
-                preprocessed, _ = preprocess_scale(df, scaler)
-                observation, curr_close, _ = calculate_observation(preprocessed[:model_in_observations],
-                                                                   df[:model_in_observations], self.buy_price)
+                # cheating to improve performance
+                # preprocessed, _ = preprocess_scale(df, scaler)
+                preprocessed = backtest_prepro_dataset[self.data.index[0]:self.data.index[-1]]
+                observation, curr_close, _ = calculate_observation(preprocessed.tail(model_in_observations),
+                                                                   df.tail(model_in_observations), self.buy_price)
 
                 action, _ = rl_model.predict(observation, deterministic=True)
                 if self.buy_price is None:
                     if action == 1:
                         self.buy()
                         self.buy_price = curr_close
-                        print(f"bought at {self.buy_price}")
+                        # print(f"bought at {self.buy_price}")
                 else:
                     if action == 2:
                         # commission = 0.001
@@ -65,7 +67,8 @@ def create_backtest_model_with_data(rl_model, data: pd.DataFrame, scaler: MinMax
                         # gain_from_trade_fee = (sell_fee - buy_fee) / buy_fee
                         self.sell()
                         self.buy_price = None
-                        print(f"sold at {curr_close}; equity {self.equity}")
+                        # print(f"sold at {curr_close}; equity {self.equity}")
 
     backtest_dataset = preprocess_add_features(data.loc[start:end])
+    backtest_prepro_dataset, scaler = preprocess_scale(data.loc[start:end], scaler)
     return Backtest(backtest_dataset, NeuralNetStrat, commission=.001, exclusive_orders=True, cash=1_000_000)

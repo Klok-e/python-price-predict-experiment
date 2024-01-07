@@ -242,14 +242,14 @@ def __get_df_for_ticker(ticker):
     return df
 
 
-def __save_processed_data(df_tickers, filename):
+def save_pickle(data, filename):
     dirname = os.path.dirname(filename)
     if not os.path.exists(dirname):
         os.makedirs(dirname)
 
     # Save the processed data to disk
     with open(filename, 'wb') as file:
-        pickle.dump(df_tickers, file)
+        pickle.dump(data, file)
 
 
 def __load_processed_data(filename):
@@ -267,5 +267,5 @@ def download_and_process_data_if_available(filename):
         print("Downloading and processing data")
         df_tickers = __download_data()
         df_tickers_processed = __full_handle_tickers(df_tickers)
-        __save_processed_data(df_tickers_processed, filename)
+        save_pickle(df_tickers_processed, filename)
         return df_tickers_processed

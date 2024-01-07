@@ -13,30 +13,12 @@ def cumulative_return(P_end, P_0):
 
 
 def max_earning_rate(A_x_list, A_y_list):
-    """
-    Calculate the Maximum Earning Rate (MER).
-    Here, A_x_list and A_y_list are lists of assets at different times, with the assumption
-    that for each i, A_x_list[i] corresponds to a later time than A_y_list[i], and A_y_list[i] < A_x_list[i].
-
-    :param A_x_list: List of total assets of the strategy at time x
-    :param A_y_list: List of total assets of the strategy at time y
-    :return: Maximum Earning Rate
-    """
     earning_rates = [(A_x - A_y) / A_y for A_x, A_y in zip(A_x_list, A_y_list) if A_y < A_x]
     return max(earning_rates) if earning_rates else 0
 
 
 def maximum_pullback(A_x_list, A_y_list):
-    """
-    Calculate the Maximum Pullback (MPB).
-    Here, A_x_list and A_y_list are lists of assets at different times, with the assumption
-    that for each i, A_x_list[i] corresponds to a later time than A_y_list[i], and A_y_list[i] > A_x_list[i].
-
-    :param A_x_list: List of total assets of the strategy at time x
-    :param A_y_list: List of total assets of the strategy at time y
-    :return: Maximum Pullback
-    """
-    pullbacks = [(A_y - A_x) / A_y for A_x, A_y in zip(A_x_list, A_y_list) if A_y > A_x]
+    pullbacks = [(A_x - A_y) / A_y for A_x, A_y in zip(A_x_list, A_y_list) if A_y > A_x]
     return max(pullbacks) if pullbacks else 0
 
 
@@ -80,7 +62,7 @@ def calculate_metrics(equity):
     # Assuming 252 trading days in a year and 6.5 trading hours per day
     minutes_in_trading_year = 252 * 6.5 * 60
     # Your risk-free rate, annualized
-    annual_risk_free_rate = 0.02
+    annual_risk_free_rate = 0.00
     # Convert the annual risk-free rate to a per-minute rate
     R_f = (1 + annual_risk_free_rate) ** (1 / minutes_in_trading_year) - 1
     # Annualize the expected return and standard deviation
