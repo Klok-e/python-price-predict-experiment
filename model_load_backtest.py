@@ -92,3 +92,4 @@ for i, dir in enumerate(sorted(dirnames)):
         plt.tight_layout()
 
         plt.show()
+        plt.savefig(f"backtest_graphs/graph model {dir}")
