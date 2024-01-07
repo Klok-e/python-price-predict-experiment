@@ -53,11 +53,13 @@ def run_backtest_on_all_tickers(strat_name, in_obs, create_strategy_func):
 
 df_tickers = download_and_process_data_if_available("cache/df_tickers.pkl")
 
-dirnames = next(os.walk(f"./rl-drom-google-drive/rl-model/"), (None, [], None))[1]  # [] if no file
+# computed_data_dir = "/content/drive/MyDrive/colab/computed-data"
+computed_data_dir = "./rl-drom-google-drive"
+dirnames = next(os.walk(f"{computed_data_dir}/rl-model/"), (None, [], None))[1]  # [] if no file
 for i, dir in enumerate(sorted(dirnames)):
     plt.figure(figsize=(15, 10))
 
-    model_path = f"./rl-drom-google-drive/rl-model/{dir}/checkpoints/{dir}_2499750_steps.zip"
+    model_path = f"{computed_data_dir}/rl-model/{dir}/checkpoints/{dir}_2499750_steps.zip"
     print(model_path)
 
     window_size = int(dir.split("_")[3].replace("ws", ""))
