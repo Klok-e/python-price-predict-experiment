@@ -18,7 +18,7 @@ OBS_OTHER = "other"
 OBS_PRICES_SEQUENCE = "prices_sequence"
 
 TICKERS = [
-    "NEARUSDT", "SOLUSDT", "BTCUSDT", "ETHUSDT", "BNBUSDT"
+    "NEARUSDT"#, "SOLUSDT", "BTCUSDT", "ETHUSDT", "BNBUSDT"
 ]
 
 
@@ -252,7 +252,7 @@ def save_pickle(data, filename):
         pickle.dump(data, file)
 
 
-def __load_processed_data(filename):
+def load_pickle(filename):
     # Load the processed data from disk
     with open(filename, 'rb') as file:
         return pickle.load(file)
@@ -262,7 +262,7 @@ def download_and_process_data_if_available(filename):
     # Check if the processed data already exists
     if os.path.exists(filename):
         print("Loading data from cache")
-        return __load_processed_data(filename)
+        return load_pickle(filename)
     else:
         print("Downloading and processing data")
         df_tickers = __download_data()

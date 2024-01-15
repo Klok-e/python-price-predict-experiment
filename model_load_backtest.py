@@ -16,7 +16,7 @@ def run_backtest_on_all_tickers(strat_name, in_obs, create_strategy_func):
     sum_equity = None
     for _, df, scaler, name in df_tickers:
         start = "2023-07-15"
-        end = "2023-10-01"
+        end = "2023-09-01"
 
         t = time.time()
         print(f"backtest for {name} started")
@@ -40,7 +40,7 @@ def run_backtest_on_all_tickers(strat_name, in_obs, create_strategy_func):
     y = (sum_equity - start_cash * tickers_count) / (start_cash * tickers_count)
     plt.plot(y, label=strat_name)
 
-    metrics = calculate_metrics(sum_equity)
+    metrics = calculate_metrics(sum_equity, start_cash)
     print()
     print(f"{strat_name} metrics:")
     print(f"cumulative_return={metrics[0]:.4f}, "
@@ -57,8 +57,6 @@ df_tickers = download_and_process_data_if_available("cache/df_tickers.pkl")
 computed_data_dir = "./rl-drom-google-drive"
 dirnames = next(os.walk(f"{computed_data_dir}/rl-model/"), (None, [], None))[1]  # [] if no file
 for i, dir in enumerate(sorted(dirnames)):
-    plt.figure(figsize=(15, 10))
-
     model_path = f"{computed_data_dir}/rl-model/{dir}/checkpoints/{dir}_2499750_steps.zip"
     print(model_path)
 
@@ -94,4 +92,4 @@ for i, dir in enumerate(sorted(dirnames)):
         plt.tight_layout()
 
         plt.show()
-        plt.savefig(f"backtest_graphs/graph model {dir}")
+        # plt.savefig(f"backtest_graphs/graph model {dir}")
