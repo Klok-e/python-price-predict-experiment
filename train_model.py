@@ -63,10 +63,12 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
                                  eval_freq=max(100_000 // n_envs, 1), verbose=1,
                                  n_eval_episodes=5)
 
-    rl_model.learn(total_timesteps=timesteps, callback=[checkpoint_callback, eval_callback])
+    learn = rl_model.learn(total_timesteps=timesteps, callback=[checkpoint_callback, eval_callback], tb_log_name=model_save_name)
 
     env.unwrapped.close()
     eval_env.unwrapped.close()
+
+    return learn
 
 
 if __name__ == "__main__":
