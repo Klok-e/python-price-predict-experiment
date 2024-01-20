@@ -48,8 +48,8 @@ def create_backtest_model_with_data(rl_model, data: pd.DataFrame, scaler: MinMax
                 df.drop(columns=["Volume"], inplace=True)
 
                 # cheating to improve performance
-                # preprocessed, _ = preprocess_scale(df, scaler)
-                preprocessed = backtest_prepro_dataset[self.data.index[0]:self.data.index[-1]]
+                preprocessed, _ = preprocess_scale(df, scaler)
+                # preprocessed = backtest_prepro_dataset[self.data.index[0]:self.data.index[-1]]
                 observation, curr_close, _ = calculate_observation(preprocessed.tail(model_in_observations),
                                                                    df.tail(model_in_observations), self.buy_price)
 
@@ -65,7 +65,7 @@ def create_backtest_model_with_data(rl_model, data: pd.DataFrame, scaler: MinMax
                         # sell_fee = curr_close * (1 - commission)
                         # buy_fee = self.buy_price * (1 + commission)
                         # gain_from_trade_fee = (sell_fee - buy_fee) / buy_fee
-                        self.sell()
+                        self.position.close()
                         self.buy_price = None
                         # print(f"sold at {curr_close}; equity {self.equity}")
 
