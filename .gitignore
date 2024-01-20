@@ -9,8 +9,13 @@ rl-model/
 rl-model-best-model/
 rl-model-bestmodel/
 rl-model-checkpoints/
+rl-drom-google-drive/
+data/
 tensorboard/
+rl-model-colab/
 keys.txt
 NeuralNetStrat.html
 cherry-picked-best-models/
 cache/
+backtest-results/
+pics/

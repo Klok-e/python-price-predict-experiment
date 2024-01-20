@@ -1,10 +1,6 @@
 import os
-import pickle
 import time
 
-import matplotlib.pyplot as plt
-import numpy as np
-from matplotlib import dates as mdates
 from stable_baselines3 import PPO
 
 from backtest import create_backtest_model_with_data, create_buy_and_hold_strategy
@@ -14,6 +10,7 @@ from util import download_and_process_data_if_available, save_pickle
 
 def run_backtest_on_all_tickers(strat_name, in_obs, create_strategy_func):
     sum_equity = None
+    trades = 0
     for _, df, scaler, name in df_tickers:
         start = "2023-07-15"
         end = "2023-09-01"
@@ -27,6 +24,8 @@ def run_backtest_on_all_tickers(strat_name, in_obs, create_strategy_func):
 
         save_pickle((res._trades, res._equity_curve), f"backtest-results/{strat_name}_{name}.pkl")
 
+        trades += len(res._trades)
+
         equity = res._equity_curve["Equity"].iloc[skip_steps:]
         if sum_equity is None:
             sum_equity = equity
@@ -35,12 +34,8 @@ def run_backtest_on_all_tickers(strat_name, in_obs, create_strategy_func):
 
         print(f"backtest for {name} finished; time taken: {time.time() - t}")
     start_cash = 1_000_000
-    tickers_count = len(df_tickers)
 
-    y = (sum_equity - start_cash * tickers_count) / (start_cash * tickers_count)
-    plt.plot(y, label=strat_name)
-
-    metrics = calculate_metrics(sum_equity, start_cash)
+    metrics = calculate_metrics(sum_equity, trades, start_cash)
     print()
     print(f"{strat_name} metrics:")
     print(f"cumulative_return={metrics[0]:.4f}, "
@@ -75,21 +70,10 @@ for i, dir in enumerate(sorted(dirnames)):
                                     end,
                                     model_in_observations))
 
-    if i % 6 == 5:
-        print("finish graph")
-        run_backtest_on_all_tickers("Buy and Hold",
-                                    64,
-                                    lambda df, scaler, model_in_observations, start,
-                                           end: create_buy_and_hold_strategy(
-                                        df,
-                                        start,
-                                        end))
-
-        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-        plt.gca().xaxis.set_major_locator(mdates.AutoDateLocator())
-        plt.gcf().autofmt_xdate()
-        plt.legend()
-        plt.tight_layout()
-
-        plt.show()
-        # plt.savefig(f"backtest_graphs/graph model {dir}")
+run_backtest_on_all_tickers("Buy and Hold",
+                            64,
+                            lambda df, scaler, model_in_observations, start,
+                                   end: create_buy_and_hold_strategy(
+                                df,
+                                start,
+                                end))
