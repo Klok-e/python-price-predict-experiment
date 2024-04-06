@@ -122,12 +122,12 @@ def preprocess_add_features(df):
     df['RSI'] = momentum.RSIIndicator(df['Close']).rsi()
 
     # Add CCI
-    cci = trend.CCIIndicator(df['High'], df['Low'], df['Close'])
-    df['CCI'] = cci.cci()
+    # cci = trend.CCIIndicator(df['High'], df['Low'], df['Close'])
+    # df['CCI'] = cci.cci()
 
     # Add ADX
-    adx = trend.ADXIndicator(df['High'], df['Low'], df['Close'])
-    df['ADX'] = adx.adx()
+    # adx = trend.ADXIndicator(df['High'], df['Low'], df['Close'])
+    # df['ADX'] = adx.adx()
 
     # Add Stochastic Oscillator
     indicator_so = momentum.StochasticOscillator(high=df['High'], low=df['Low'], close=df['Close'])
@@ -269,3 +269,43 @@ def download_and_process_data_if_available(filename):
         df_tickers_processed = __full_handle_tickers(df_tickers)
         save_pickle(df_tickers_processed, filename)
         return df_tickers_processed
+
+
+def create_synthetic_price_data():
+    import numpy as np
+    import pandas as pd
+    from datetime import datetime, timedelta
+
+    def generate_synthetic_data(tickers, start_date, end_date, freq='1T'):
+        data = []
+        date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
+        time_steps = np.arange(len(date_range))
+
+        for ticker in tickers:
+            # Sinusoidal prices with random noise and shift
+            shift = np.random.uniform(-np.pi, np.pi)  # Random shift
+            base_prices = 50 + 10 * np.sin((time_steps / 180) + shift)  # Base sinusoidal function with shift
+            noise = np.random.normal(0, 2, size=len(time_steps))  # Random noise
+            prices = base_prices + noise
+
+            volumes = np.random.randint(100, 10000, size=len(date_range))
+
+            df = pd.DataFrame({
+                'Open time': date_range,
+                'Open': prices,
+                'High': prices * np.random.uniform(1.01, 1.05, size=len(date_range)),
+                'Low': prices * np.random.uniform(0.95, 0.99, size=len(date_range)),
+                'Close': prices,
+                'Volume': volumes
+            })
+            data.append((df, ticker))
+        return data
+
+    print("Creating synthetic data")
+    tickers = ["SYNTH1USDT", "SYNTH2USDT"]
+    start_date = datetime.now() - timedelta(days=365)
+    end_date = datetime.now()
+
+    df_tickers = generate_synthetic_data(tickers, start_date, end_date)
+    df_tickers_processed = __full_handle_tickers(df_tickers)
+    return df_tickers_processed
