@@ -24,7 +24,7 @@ def train_model(df_tickers, net_arch: list[int], timesteps: int,
 
     env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_train,
                                               "model_in_observations": model_window_size},
-                       n_envs=n_envs, seed=42, vec_env_cls=SubprocVecEnv)
+                       n_envs=n_envs, seed=42, vec_env_cls=SubprocVecEnv, vec_env_kwargs=dict(start_method='spawn'))
 
     policy_kvargs = dict(activation_fn=torch.nn.LeakyReLU,
                          net_arch=net_arch,
