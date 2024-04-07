@@ -15,7 +15,7 @@ count = 0
 # @profile
 def train_model(df_tickers, net_arch: list[int], timesteps: int,
                 model_window_size: int, n_envs: int, directory: str, model_save_name, policy_kwargs: dict):
-    split_date = "2023-06-01"
+    split_date = "2024-03-01"
 
     df_tickers_train = list(
         map(lambda ticker: (ticker[0].loc[:split_date], ticker[1].loc[:split_date], ticker[2], ticker[3]), df_tickers))
