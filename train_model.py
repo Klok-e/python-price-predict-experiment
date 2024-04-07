@@ -54,7 +54,7 @@ def train_model(df_tickers, net_arch: list[int], timesteps: int,
                                                    "model_in_observations": model_window_size,
                                                    "episodes_max": 5},
                             seed=42,
-                            vec_env_cls=SubprocVecEnv)
+                            vec_env_cls=SubprocVecEnv, vec_env_kwargs=dict(start_method='spawn'))
     eval_callback = EvalCallback(eval_env,
                                  best_model_save_path=f"{directory}/rl-model/{model_save_name}/best-model",
                                  log_path=f"{directory}/rl-model/{model_save_name}/best-model/results",
