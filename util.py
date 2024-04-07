@@ -23,6 +23,7 @@ TICKERS = [
 
 BINANCE_DATA_START_DATE = datetime.date(2023, 1, 1)
 
+
 class MultiScaler:
     def __init__(self, min_max: MinMaxScaler, std: StandardScaler):
         self.min_max = min_max
@@ -200,9 +201,9 @@ def test_orig_val(dataset):
                                   range2_inv.reset_index(drop=True), check_exact=False)
 
 
-def __download_data(refresh=True):
+def __download_data(data_dir):
     data_dumper = BinanceDataDumper(
-        path_dir_where_to_dump=".",
+        path_dir_where_to_dump=f"{data_dir}/",
         asset_class="spot",  # spot, um, cm
         data_type="klines",  # aggTrades, klines, trades
         data_frequency="1m",
@@ -210,8 +211,7 @@ def __download_data(refresh=True):
 
     print(data_dumper.get_list_all_trading_pairs())
 
-    if refresh:
-        data_dumper.dump_data(tickers=TICKERS, date_start=BINANCE_DATA_START_DATE)
+    data_dumper.dump_data(tickers=TICKERS, date_start=BINANCE_DATA_START_DATE)
 
     return list(zip(map(lambda ticker: __get_df_for_ticker(ticker), TICKERS), TICKERS))
 
@@ -259,16 +259,17 @@ def load_pickle(filename):
         return pickle.load(file)
 
 
-def download_and_process_data_if_available(filename):
+def download_and_process_data_if_available(data_dir, reload=False):
     # Check if the processed data already exists
-    if os.path.exists(filename):
+    cache_path = f"{data_dir}/df_tickers.pkl"
+    if os.path.exists(cache_path) and not reload:
         print("Loading data from cache")
-        return load_pickle(filename)
+        return load_pickle(cache_path)
     else:
         print("Downloading and processing data")
-        df_tickers = __download_data()
+        df_tickers = __download_data(data_dir)
         df_tickers_processed = __full_handle_tickers(df_tickers)
-        save_pickle(df_tickers_processed, filename)
+        save_pickle(df_tickers_processed, cache_path)
         return df_tickers_processed
 
 

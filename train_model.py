@@ -71,7 +71,7 @@ def train_model(df_tickers, net_arch: list[int], timesteps: int,
 
 
 if __name__ == "__main__":
-    df_tickers = download_and_process_data_if_available("cache/df_tickers.pkl")
+    df_tickers = download_and_process_data_if_available("dataset")
 
     env = CustomEnv(df_tickers)
     check_env(env)
