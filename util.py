@@ -270,7 +270,7 @@ def download_and_process_data_if_available(data_dir, reload=False):
         print("Downloading and processing data")
         df_tickers = __download_data(data_dir)
         df_tickers_processed = __full_handle_tickers(df_tickers)
-        # save_pickle(df_tickers_processed, cache_path)
+        save_pickle(df_tickers_processed, cache_path)
         return df_tickers_processed
 
 
