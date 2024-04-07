@@ -65,7 +65,7 @@ def train_model(df_tickers, net_arch: list[int], timesteps: int,
                            tb_log_name=model_save_name)
 
     env.unwrapped.close()
-    eval_env.unwrapped.close()
+    # eval_env.unwrapped.close()
 
     return learn
 
