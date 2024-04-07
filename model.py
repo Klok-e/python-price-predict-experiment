@@ -5,6 +5,8 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from torch import nn
 import torch as th
 
+from util import OBS_PRICES_SEQUENCE, OBS_OTHER
+
 
 class LSTMExtractor(BaseFeaturesExtractor):
     def __init__(self, observation_space: spaces.Dict, lstm_hidden_size=32, lstm_layers=1):
@@ -15,13 +17,13 @@ class LSTMExtractor(BaseFeaturesExtractor):
         # We need to know size of the output of this extractor,
         # so go over all the spaces and compute output feature sizes
         for key, subspace in observation_space.spaces.items():
-            if key == "prices_sequence":
+            if key == OBS_PRICES_SEQUENCE:
                 # Assuming sequence length is `seq_len` and feature number is `n_features`
                 seq_len, n_features = subspace.shape
                 extractors[key] = nn.LSTM(input_size=n_features, hidden_size=lstm_hidden_size, batch_first=True,
                                           num_layers=lstm_layers)
                 total_concat_size += lstm_hidden_size  # hidden_dim is the LSTM output size
-            elif key == "other":
+            elif key == OBS_OTHER:
                 extractors[key] = nn.Flatten()
                 total_concat_size += get_flattened_obs_dim(subspace)
 
@@ -35,7 +37,7 @@ class LSTMExtractor(BaseFeaturesExtractor):
 
         for key, extractor in self.extractors.items():
             obs_data = observations[key]
-            if key == "prices_sequence":
+            if key == OBS_PRICES_SEQUENCE:
                 # LSTM expects input of shape (batch, seq_len, input_size)
                 obs_data = obs_data.view(obs_data.size(0), -1, extractor.input_size)  # reshape if necessary
                 out, _ = extractor(obs_data)
@@ -44,6 +46,33 @@ class LSTMExtractor(BaseFeaturesExtractor):
             else:
                 encoded_tensor_list.append(extractor(obs_data))
         # print(list(map(lambda x: x.shape, encoded_tensor_list)))
+        return th.cat(encoded_tensor_list, dim=1)
+
+
+class MLPExtractor(BaseFeaturesExtractor):
+    def __init__(self, observation_space: spaces.Dict, hidden_size=32):
+        super().__init__(observation_space, features_dim=1)
+
+        extractors = {}
+        total_concat_size = 0
+        for key, subspace in observation_space.spaces.items():
+            extractors[key] = nn.Sequential(
+                nn.Flatten(),
+                nn.Linear(get_flattened_obs_dim(subspace), hidden_size),
+                nn.ReLU()
+            )
+            total_concat_size += hidden_size
+
+        self.extractors = nn.ModuleDict(extractors)
+        self._features_dim = total_concat_size
+
+    def forward(self, observations: th.Tensor) -> th.Tensor:
+        encoded_tensor_list = []
+
+        for key, extractor in self.extractors.items():
+            obs_data = observations[key]
+            encoded_tensor_list.append(extractor(obs_data))
+
         return th.cat(encoded_tensor_list, dim=1)
 
 
