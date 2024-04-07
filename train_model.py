@@ -13,10 +13,8 @@ count = 0
 
 
 # @profile
-def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[int], timesteps: int,
-                model_window_size: int, n_envs: int, directory: str):
-    model_save_name = f"hs{hidden_size}_lstm{lstm_layers}_net{net_arch}_ws{model_window_size}"
-
+def train_model(df_tickers, net_arch: list[int], timesteps: int,
+                model_window_size: int, n_envs: int, directory: str, model_save_name, policy_kwargs: dict):
     split_date = "2023-06-01"
 
     df_tickers_train = list(
@@ -29,9 +27,8 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
                        n_envs=n_envs, seed=42, vec_env_cls=SubprocVecEnv)
 
     policy_kvargs = dict(activation_fn=torch.nn.LeakyReLU,
-                         # features_extractor_class=LSTMExtractor,features_extractor_kwargs=dict(lstm_hidden_size=hidden_size, lstm_layers=lstm_layers),
-                         features_extractor_class=MLPExtractor,
-                         net_arch=net_arch)
+                         net_arch=net_arch,
+                         **policy_kwargs)
 
     # {'gamma': 0.8, 'ent_coef': 0.02, 'gae_lambda': 0.92}
     rl_model = PPO("MultiInputPolicy", env,
@@ -88,4 +85,8 @@ if __name__ == "__main__":
             for arch in arch_list:
                 for window_size in window_size_list:
                     print(f"hidden_size {hidden_size}, lstm_layers {lstm_layers}, window_size {window_size}")
-                    train_model(df_tickers, hidden_size, lstm_layers, arch, 500_000, window_size, 5, "data")
+                    train_model(df_tickers, arch, 500_000, window_size, 5, "data",
+                                f"hs{hidden_size}_lstm{lstm_layers}_net{arch}_ws{window_size}",
+                                dict(features_extractor_class=LSTMExtractor,
+                                     features_extractor_kwargs=dict(lstm_hidden_size=hidden_size,
+                                                                    lstm_layers=lstm_layers)))
