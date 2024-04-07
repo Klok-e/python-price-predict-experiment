@@ -217,8 +217,9 @@ def __download_data(data_dir):
 
 
 def __get_df_for_ticker(data_dir, ticker):
-    filenames = next(os.walk(f"{data_dir}/spot/monthly/klines/{ticker}/1m"), (None, None, []))[2]  # [] if no file
-    print(filenames)
+    minute_klines_dir = f"{data_dir}/spot/monthly/klines/{ticker}/1m"
+    filenames = next(os.walk(minute_klines_dir), (None, None, []))[2]  # [] if no file
+
     columns = [
         "Open time",
         "Open",
@@ -237,7 +238,7 @@ def __get_df_for_ticker(data_dir, ticker):
     df = pd.DataFrame(columns=columns)
 
     for f in filenames:
-        new_df = pd.read_csv(f"{data_dir}/spot/monthly/klines/{ticker}/1m/{f}", header=None, names=columns)
+        new_df = pd.read_csv(f"{minute_klines_dir}/{f}", header=None, names=columns)
         df = pd.concat([d for d in [df, new_df] if not d.empty], ignore_index=True)
     df = df.sort_values(by="Open time")
     return df
@@ -269,7 +270,7 @@ def download_and_process_data_if_available(data_dir, reload=False):
         print("Downloading and processing data")
         df_tickers = __download_data(data_dir)
         df_tickers_processed = __full_handle_tickers(df_tickers)
-        save_pickle(df_tickers_processed, cache_path)
+        # save_pickle(df_tickers_processed, cache_path)
         return df_tickers_processed
 
 
