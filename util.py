@@ -293,8 +293,8 @@ def create_synthetic_price_data():
             df = pd.DataFrame({
                 'Open time': date_range,
                 'Open': prices,
-                'High': prices * np.random.uniform(1.01, 1.05, size=len(date_range)),
-                'Low': prices * np.random.uniform(0.95, 0.99, size=len(date_range)),
+                'High': prices,
+                'Low': prices,
                 'Close': prices,
                 'Volume': volumes
             })
