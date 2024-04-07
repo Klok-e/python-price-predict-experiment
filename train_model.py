@@ -3,6 +3,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.torch_layers import FlattenExtractor
 from stable_baselines3.common.vec_env import SubprocVecEnv
 
 from env import CustomEnv
@@ -29,8 +30,8 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
                        n_envs=n_envs, seed=42, vec_env_cls=SubprocVecEnv)
 
     policy_kvargs = dict(activation_fn=torch.nn.LeakyReLU,
-                         features_extractor_class=LSTMExtractor,
-                         features_extractor_kwargs=dict(lstm_hidden_size=hidden_size, lstm_layers=lstm_layers),
+                         # features_extractor_class=LSTMExtractor,features_extractor_kwargs=dict(lstm_hidden_size=hidden_size, lstm_layers=lstm_layers),
+                         features_extractor_class=FlattenExtractor,
                          net_arch=net_arch)
 
     # {'gamma': 0.8, 'ent_coef': 0.02, 'gae_lambda': 0.92}
@@ -63,7 +64,8 @@ def train_model(df_tickers, hidden_size: int, lstm_layers: int, net_arch: list[i
                                  eval_freq=max(100_000 // n_envs, 1), verbose=1,
                                  n_eval_episodes=5)
 
-    learn = rl_model.learn(total_timesteps=timesteps, callback=[checkpoint_callback, eval_callback], tb_log_name=model_save_name)
+    learn = rl_model.learn(total_timesteps=timesteps, callback=[checkpoint_callback, eval_callback],
+                           tb_log_name=model_save_name)
 
     env.unwrapped.close()
     eval_env.unwrapped.close()
