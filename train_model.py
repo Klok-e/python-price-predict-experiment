@@ -40,6 +40,7 @@ def train_model(df_tickers, net_arch: list[int], timesteps: int,
                    policy_kwargs=policy_kvargs,
                    batch_size=1024,
                    seed=42)
+    print(rl_model.policy)
 
     checkpoint_callback = CheckpointCallback(
         save_freq=max(50_000 // n_envs, 1),

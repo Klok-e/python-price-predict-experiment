@@ -76,6 +76,69 @@ class MLPExtractor(BaseFeaturesExtractor):
         return th.cat(encoded_tensor_list, dim=1)
 
 
+class SequenceCNNExtractor(BaseFeaturesExtractor):
+    def __init__(self, observation_space: spaces.Dict,
+                 cnn_channels=None,
+                 kernel_size=None,
+                 stride=None,
+                 padding=None):
+        super().__init__(observation_space, features_dim=1)
+
+        if cnn_channels is None:
+            cnn_channels = [16, 32]
+        if kernel_size is None:
+            kernel_size = 3
+        if stride is None:
+            stride = 1
+        if padding is None:
+            padding = 0
+
+        self.extractors = nn.ModuleDict()
+        total_concat_size = 0
+
+        for key, subspace in observation_space.spaces.items():
+            if key == OBS_PRICES_SEQUENCE:
+                seq_len, n_features = subspace.shape
+                layers = []
+                in_channels = n_features
+                for out_channels in cnn_channels:
+                    layers.append(nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size,
+                                            stride=stride, padding=padding))
+                    layers.append(nn.LeakyReLU())
+                    in_channels = out_channels
+                layers.append(nn.Flatten())
+                self.extractors[key] = nn.Sequential(*layers)
+                # Calculate output size
+                output_size = self._calculate_cnn_output_size(seq_len, cnn_channels, kernel_size, stride, padding)
+                total_concat_size += output_size
+            elif key == OBS_OTHER:
+                self.extractors[key] = nn.Flatten()
+                total_concat_size += get_flattened_obs_dim(subspace)
+
+        self._features_dim = total_concat_size
+
+    def forward(self, observations: th.Tensor) -> th.Tensor:
+        encoded_tensor_list = []
+
+        for key, extractor in self.extractors.items():
+            obs_data = observations[key]
+            if key == OBS_PRICES_SEQUENCE:
+                # CNN expects input of shape (batch, channels, length), so transpose the sequence tensor
+                obs_data = obs_data.transpose(1, 2)  # Swap seq_len and n_features
+                encoded_tensor_list.append(extractor(obs_data))
+            else:
+                encoded_tensor_list.append(extractor(obs_data))
+
+        return th.cat(encoded_tensor_list, dim=1)
+
+    @staticmethod
+    def _calculate_cnn_output_size(seq_len, cnn_channels, kernel_size, stride, padding):
+        output_size = seq_len
+        for _ in cnn_channels:
+            output_size = (output_size + 2 * padding - (kernel_size - 1) - 1) // stride + 1
+        return output_size * cnn_channels[-1]
+
+
 class TransformerExtractor(BaseFeaturesExtractor):
     def __init__(self, observation_space: spaces.Dict, transformer_hidden_size=64, transformer_heads=4,
                  transformer_layers=1):
