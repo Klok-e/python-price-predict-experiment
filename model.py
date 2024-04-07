@@ -148,7 +148,7 @@ class TransformerExtractor(BaseFeaturesExtractor):
         total_concat_size = 0
 
         for key, subspace in observation_space.spaces.items():
-            if key == "prices_sequence":
+            if key == OBS_PRICES_SEQUENCE:
                 seq_len, n_features = subspace.shape
                 transformer_layer = nn.TransformerEncoderLayer(
                     d_model=n_features,
@@ -163,7 +163,7 @@ class TransformerExtractor(BaseFeaturesExtractor):
                 total_concat_size += n_features
                 self.positional_encoding = nn.Parameter(self.create_positional_encoding(seq_len, n_features),
                                                         requires_grad=False)
-            elif key == "other":
+            elif key == OBS_OTHER:
                 extractors[key] = nn.Flatten()
                 total_concat_size += get_flattened_obs_dim(subspace)
 
@@ -171,7 +171,8 @@ class TransformerExtractor(BaseFeaturesExtractor):
 
         self._features_dim = total_concat_size
 
-    def create_positional_encoding(self, seq_len, d_model):
+    @staticmethod
+    def create_positional_encoding(seq_len, d_model):
         # Create positional encodings
         position = th.arange(seq_len).unsqueeze(1)
         div_term = th.exp(th.arange(0, d_model, 2) * -(math.log(10000.0) / d_model))
@@ -187,7 +188,7 @@ class TransformerExtractor(BaseFeaturesExtractor):
 
         for key, extractor in self.extractors.items():
             obs_data = observations[key]
-            if key == "prices_sequence":
+            if key == OBS_PRICES_SEQUENCE:
                 # Add positional encoding
                 seq_len = obs_data.size(1)
                 # Ensure positional encoding is added correctly
