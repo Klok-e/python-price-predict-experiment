@@ -18,9 +18,10 @@ OBS_OTHER = "other"
 OBS_PRICES_SEQUENCE = "prices_sequence"
 
 TICKERS = [
-    "NEARUSDT", "SOLUSDT", "BTCUSDT", "ETHUSDT", "BNBUSDT"
+    "NEARUSDT"  # , "SOLUSDT", "BTCUSDT", "ETHUSDT", "BNBUSDT"
 ]
 
+BINANCE_DATA_START_DATE = datetime.date(2023, 1, 1)
 
 class MultiScaler:
     def __init__(self, min_max: MinMaxScaler, std: StandardScaler):
@@ -210,7 +211,7 @@ def __download_data(refresh=True):
     print(data_dumper.get_list_all_trading_pairs())
 
     if refresh:
-        data_dumper.dump_data(tickers=TICKERS, date_start=datetime.date(2019, 1, 1))
+        data_dumper.dump_data(tickers=TICKERS, date_start=BINANCE_DATA_START_DATE)
 
     return list(zip(map(lambda ticker: __get_df_for_ticker(ticker), TICKERS), TICKERS))
 
