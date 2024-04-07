@@ -283,10 +283,9 @@ def create_synthetic_price_data():
 
         for ticker in tickers:
             # Sinusoidal prices with random noise and shift
-            shift = np.random.uniform(-np.pi, np.pi)  # Random shift
-            base_prices = 50 + 10 * np.sin((time_steps / 180) + shift)  # Base sinusoidal function with shift
-            # noise = np.random.normal(0, 2, size=len(time_steps))  # Random noise
-            prices = base_prices #+ noise
+            shift = np.random.uniform(-np.pi, np.pi)
+            base_prices = 50 + 10 * np.sin((time_steps / 180) + shift)
+            prices = base_prices
 
             volumes = np.random.randint(100, 10000, size=len(date_range))
 
@@ -302,7 +301,7 @@ def create_synthetic_price_data():
         return data
 
     print("Creating synthetic data")
-    tickers = ["SYNTH1USDT"]#, "SYNTH2USDT"]
+    tickers = ["SYNTH1USDT"]
     start_date = datetime.now() - timedelta(days=365)
     end_date = datetime.now()
 

@@ -59,7 +59,7 @@ class MLPExtractor(BaseFeaturesExtractor):
             extractors[key] = nn.Sequential(
                 nn.Flatten(),
                 nn.Linear(get_flattened_obs_dim(subspace), hidden_size),
-                nn.ReLU()
+                nn.LeakyReLU()
             )
             total_concat_size += hidden_size
 
