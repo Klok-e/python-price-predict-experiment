@@ -218,7 +218,7 @@ def __download_data(data_dir):
 
 def __get_df_for_ticker(data_dir, ticker):
     filenames = next(os.walk(f"{data_dir}/spot/monthly/klines/{ticker}/1m"), (None, None, []))[2]  # [] if no file
-
+    print(filenames)
     columns = [
         "Open time",
         "Open",
