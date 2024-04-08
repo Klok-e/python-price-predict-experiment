@@ -15,12 +15,12 @@ count = 0
 # @profile
 def train_model(df_tickers, net_arch: list[int], timesteps: int,
                 model_window_size: int, n_envs: int, directory: str, model_save_name, policy_kwargs: dict):
-    split_date = "2024-03-01"
+    split_date = "2024-02-01"
 
     df_tickers_train = list(
         map(lambda ticker: (ticker[0].loc[:split_date], ticker[1].loc[:split_date], ticker[2], ticker[3]), df_tickers))
-    # df_tickers_test = list(
-    #     map(lambda ticker: (ticker[0].loc[split_date:], ticker[1].loc[split_date:], ticker[2], ticker[3]), df_tickers))
+    df_tickers_test = list(
+        map(lambda ticker: (ticker[0].loc[split_date:], ticker[1].loc[split_date:], ticker[2], ticker[3]), df_tickers))
 
     env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_train,
                                               "model_in_observations": model_window_size},
@@ -50,18 +50,18 @@ def train_model(df_tickers, net_arch: list[int], timesteps: int,
         save_vecnormalize=True,
         save_replay_buffer=True
     )
-    # eval_env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_test,
-    #                                                "model_in_observations": model_window_size,
-    #                                                "episodes_max": 5},
-    #                         seed=42,
-    #                         vec_env_cls=SubprocVecEnv)
-    # eval_callback = EvalCallback(eval_env,
-    #                              best_model_save_path=f"{directory}/rl-model/{model_save_name}/best-model",
-    #                              log_path=f"{directory}/rl-model/{model_save_name}/best-model/results",
-    #                              eval_freq=max(100_000 // n_envs, 1), verbose=1,
-    #                              n_eval_episodes=5)
+    eval_env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_test,
+                                                   "model_in_observations": model_window_size,
+                                                   "episodes_max": 5},
+                            seed=42,
+                            vec_env_cls=SubprocVecEnv)
+    eval_callback = EvalCallback(eval_env,
+                                 best_model_save_path=f"{directory}/rl-model/{model_save_name}/best-model",
+                                 log_path=f"{directory}/rl-model/{model_save_name}/best-model/results",
+                                 eval_freq=max(100_000 // n_envs, 1), verbose=1,
+                                 n_eval_episodes=5)
 
-    learn = rl_model.learn(total_timesteps=timesteps, callback=[checkpoint_callback],
+    learn = rl_model.learn(total_timesteps=timesteps, callback=[checkpoint_callback, eval_callback],
                            tb_log_name=model_save_name)
 
     env.unwrapped.close()
