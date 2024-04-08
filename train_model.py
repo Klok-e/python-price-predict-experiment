@@ -19,8 +19,8 @@ def train_model(df_tickers, net_arch: list[int], timesteps: int,
 
     df_tickers_train = list(
         map(lambda ticker: (ticker[0].loc[:split_date], ticker[1].loc[:split_date], ticker[2], ticker[3]), df_tickers))
-    df_tickers_test = list(
-        map(lambda ticker: (ticker[0].loc[split_date:], ticker[1].loc[split_date:], ticker[2], ticker[3]), df_tickers))
+    # df_tickers_test = list(
+    #     map(lambda ticker: (ticker[0].loc[split_date:], ticker[1].loc[split_date:], ticker[2], ticker[3]), df_tickers))
 
     env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_train,
                                               "model_in_observations": model_window_size},
