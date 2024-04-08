@@ -8,8 +8,8 @@ def run_backtest_on_all_tickers(df_tickers, strat_name, in_obs, create_strategy_
     sum_equity = None
     trades = 0
     for _, df, scaler, name in df_tickers:
-        start = "2024-03-01"
-        end = "2024-04-01"
+        start = "2024-02-01"
+        end = "2024-03-01"
 
         t = time.time()
         print(f"backtest for {name} started")
