@@ -19,12 +19,14 @@ def train_model(df_tickers, net_arch: list[int], timesteps: int,
 
     df_tickers_train = list(
         map(lambda ticker: (
-            SharedPandasDataFrame(ticker[0].loc[:split_date]), SharedPandasDataFrame(ticker[1].loc[:split_date]),
+            SharedPandasDataFrame(ticker[0].loc[:split_date]),
+            SharedPandasDataFrame(ticker[1].loc[:split_date]),
             ticker[2],
             ticker[3]), df_tickers))
     df_tickers_test = list(
         map(lambda ticker: (
-            SharedPandasDataFrame(ticker[0].loc[split_date:]), SharedPandasDataFrame(ticker[1].loc[split_date:]),
+            SharedPandasDataFrame(ticker[0].loc[split_date:]),
+            SharedPandasDataFrame(ticker[1].loc[split_date:]),
             ticker[2],
             ticker[3]), df_tickers))
 
