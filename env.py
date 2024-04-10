@@ -19,8 +19,8 @@ class CustomEnv(gym.Env):
         # 0: hold; 1: buy; 2: sell
         self.action_space = spaces.Discrete(3)
 
-        prepro_dataset = df_tickers[0][0].read()
-        pristine_dataset = df_tickers[0][1].read()
+        prepro_dataset = df_tickers[0][0]
+        pristine_dataset = df_tickers[0][1]
         self.FEATURES_SHAPE = calculate_observation(
             prepro_dataset[:model_in_observations],
             pristine_dataset[:model_in_observations], None)[0]
@@ -48,8 +48,8 @@ class CustomEnv(gym.Env):
         self.episode_idx = 0
         self.episodes = []
         for ticker in df_tickers:
-            ticker_0 = ticker[0].read()
-            ticker_1 = ticker[1].read()
+            ticker_0 = ticker[0]
+            ticker_1 = ticker[1]
             for start_index in range(0, len(ticker_0), self.episode_length):
                 if (len(ticker_0.iloc[start_index:start_index + self.episode_length]) == self.episode_length
                         and len(ticker_1.iloc[start_index:start_index + self.episode_length]) == self.episode_length):
