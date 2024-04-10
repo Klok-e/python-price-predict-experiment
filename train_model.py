@@ -50,7 +50,7 @@ def train_model(df_tickers, net_arch: list[int], timesteps: int,
         save_vecnormalize=True,
         save_replay_buffer=True
     )
-    eval_env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_test,
+    eval_env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": SharedPandasDataFrame(df_tickers_test),
                                                    "model_in_observations": model_window_size,
                                                    "episodes_max": 5},
                             seed=42,
