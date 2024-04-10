@@ -50,18 +50,25 @@ class LSTMExtractor(BaseFeaturesExtractor):
 
 
 class MLPExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space: spaces.Dict, hidden_size=32):
+    def __init__(self, observation_space: spaces.Dict, hidden_sizes=None):
         super().__init__(observation_space, features_dim=1)
+
+        if hidden_sizes is None:
+            hidden_sizes = [32]
 
         extractors = {}
         total_concat_size = 0
         for key, subspace in observation_space.spaces.items():
-            extractors[key] = nn.Sequential(
-                nn.Flatten(),
-                nn.Linear(get_flattened_obs_dim(subspace), hidden_size),
-                nn.LeakyReLU()
-            )
-            total_concat_size += hidden_size
+            in_channels = get_flattened_obs_dim(subspace)
+            layers = [nn.Flatten()]
+            for out_channels in hidden_sizes:
+                layers.append(nn.Linear(in_channels, out_channels))
+                layers.append(nn.LeakyReLU())
+                in_channels = out_channels
+
+            extractors[key] = nn.Sequential(*layers)
+
+            total_concat_size += hidden_sizes
 
         self.extractors = nn.ModuleDict(extractors)
         self._features_dim = total_concat_size
