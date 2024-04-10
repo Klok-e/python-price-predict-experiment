@@ -30,56 +30,52 @@ def train_model(df_tickers, net_arch: list[int], timesteps: int,
             ticker[2],
             ticker[3]), df_tickers))
 
-    try:
-        verify_custom_env(df_tickers_train)
+    verify_custom_env(df_tickers_train)
 
-        env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_train,
-                                                  "model_in_observations": model_window_size},
-                           n_envs=n_envs, seed=42, vec_env_cls=SubprocVecEnv)
+    env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_train,
+                                              "model_in_observations": model_window_size},
+                       n_envs=n_envs, seed=42, vec_env_cls=SubprocVecEnv)
 
-        policy_kvargs = dict(activation_fn=torch.nn.LeakyReLU,
-                             net_arch=net_arch,
-                             **policy_kwargs)
+    policy_kvargs = dict(activation_fn=torch.nn.LeakyReLU,
+                         net_arch=net_arch,
+                         **policy_kwargs)
 
-        # {'gamma': 0.8, 'ent_coef': 0.02, 'gae_lambda': 0.92}
-        rl_model = PPO("MultiInputPolicy", env,
-                       verbose=1,
-                       tensorboard_log=f"{directory}/tensorboard/",
-                       ent_coef=0.02,
-                       gae_lambda=0.92,
-                       gamma=0.9,
-                       policy_kwargs=policy_kvargs,
-                       batch_size=1024,
-                       seed=42)
-        print(rl_model.policy)
+    # {'gamma': 0.8, 'ent_coef': 0.02, 'gae_lambda': 0.92}
+    rl_model = PPO("MultiInputPolicy", env,
+                   verbose=1,
+                   tensorboard_log=f"{directory}/tensorboard/",
+                   ent_coef=0.02,
+                   gae_lambda=0.92,
+                   gamma=0.9,
+                   policy_kwargs=policy_kvargs,
+                   batch_size=1024,
+                   seed=42)
+    print(rl_model.policy)
 
-        checkpoint_callback = CheckpointCallback(
-            save_freq=max(50_000 // n_envs, 1),
-            save_path=f"{directory}/rl-model/{model_save_name}/checkpoints/",
-            name_prefix=model_save_name,
-            verbose=1,
-            save_vecnormalize=True,
-            save_replay_buffer=True
-        )
-        eval_env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_test,
-                                                       "model_in_observations": model_window_size,
-                                                       "episodes_max": 5},
-                                seed=42,
-                                vec_env_cls=SubprocVecEnv)
-        eval_callback = EvalCallback(eval_env,
-                                     best_model_save_path=f"{directory}/rl-model/{model_save_name}/best-model",
-                                     log_path=f"{directory}/rl-model/{model_save_name}/best-model/results",
-                                     eval_freq=max(100_000 // n_envs, 1), verbose=1,
-                                     n_eval_episodes=5)
+    checkpoint_callback = CheckpointCallback(
+        save_freq=max(50_000 // n_envs, 1),
+        save_path=f"{directory}/rl-model/{model_save_name}/checkpoints/",
+        name_prefix=model_save_name,
+        verbose=1,
+        save_vecnormalize=True,
+        save_replay_buffer=True
+    )
+    eval_env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_test,
+                                                   "model_in_observations": model_window_size,
+                                                   "episodes_max": 5},
+                            seed=42,
+                            vec_env_cls=SubprocVecEnv)
+    eval_callback = EvalCallback(eval_env,
+                                 best_model_save_path=f"{directory}/rl-model/{model_save_name}/best-model",
+                                 log_path=f"{directory}/rl-model/{model_save_name}/best-model/results",
+                                 eval_freq=max(100_000 // n_envs, 1), verbose=1,
+                                 n_eval_episodes=5)
 
-        learn = rl_model.learn(total_timesteps=timesteps, callback=[checkpoint_callback, eval_callback],
-                               tb_log_name=model_save_name)
+    learn = rl_model.learn(total_timesteps=timesteps, callback=[checkpoint_callback, eval_callback],
+                           tb_log_name=model_save_name)
 
-        env.unwrapped.close()
-        eval_env.unwrapped.close()
-    finally:
-        unlink_tickers(df_tickers_train)
-        unlink_tickers(df_tickers_test)
+    env.unwrapped.close()
+    eval_env.unwrapped.close()
 
     return learn
 
