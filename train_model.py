@@ -7,7 +7,7 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 
 from env import CustomEnv
 from model import LSTMExtractor, MLPExtractor
-from util import download_and_process_data_if_available
+from util import download_and_process_data_if_available, SharedPandasDataFrame
 
 count = 0
 
@@ -22,7 +22,7 @@ def train_model(df_tickers, net_arch: list[int], timesteps: int,
     df_tickers_test = list(
         map(lambda ticker: (ticker[0].loc[split_date:], ticker[1].loc[split_date:], ticker[2], ticker[3]), df_tickers))
 
-    env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_train,
+    env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": SharedPandasDataFrame(df_tickers_train),
                                               "model_in_observations": model_window_size},
                        n_envs=n_envs, seed=42, vec_env_cls=SubprocVecEnv)
 
