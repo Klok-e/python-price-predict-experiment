@@ -8,11 +8,9 @@ from util import calculate_observation, OBS_PRICES_SEQUENCE, OBS_OTHER, SharedPa
 
 
 class CustomEnv(gym.Env):
-    def __init__(self, df_tickers: SharedPandasDataFrame, episode_length=1024, episodes_max=None,
+    def __init__(self, df_tickers, episode_length=1024, episodes_max=None,
                  commission=0.001, model_in_observations=64):
         super().__init__()
-
-        df_tickers = df_tickers.read()
 
         self.random_gen = None
 

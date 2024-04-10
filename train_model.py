@@ -18,11 +18,19 @@ def train_model(df_tickers, net_arch: list[int], timesteps: int,
     split_date = "2024-02-01"
 
     df_tickers_train = list(
-        map(lambda ticker: (ticker[0].loc[:split_date], ticker[1].loc[:split_date], ticker[2], ticker[3]), df_tickers))
+        map(lambda ticker: (
+            SharedPandasDataFrame(ticker[0].loc[:split_date]), SharedPandasDataFrame(ticker[1].loc[:split_date]),
+            ticker[2],
+            ticker[3]), df_tickers))
     df_tickers_test = list(
-        map(lambda ticker: (ticker[0].loc[split_date:], ticker[1].loc[split_date:], ticker[2], ticker[3]), df_tickers))
+        map(lambda ticker: (
+            SharedPandasDataFrame(ticker[0].loc[split_date:]), SharedPandasDataFrame(ticker[1].loc[split_date:]),
+            ticker[2],
+            ticker[3]), df_tickers))
 
-    env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": SharedPandasDataFrame(df_tickers_train),
+    verify_custom_env(df_tickers_train)
+
+    env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_train,
                                               "model_in_observations": model_window_size},
                        n_envs=n_envs, seed=42, vec_env_cls=SubprocVecEnv)
 
@@ -50,7 +58,7 @@ def train_model(df_tickers, net_arch: list[int], timesteps: int,
         save_vecnormalize=True,
         save_replay_buffer=True
     )
-    eval_env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": SharedPandasDataFrame(df_tickers_test),
+    eval_env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_test,
                                                    "model_in_observations": model_window_size,
                                                    "episodes_max": 5},
                             seed=42,
@@ -67,7 +75,22 @@ def train_model(df_tickers, net_arch: list[int], timesteps: int,
     env.unwrapped.close()
     eval_env.unwrapped.close()
 
+    unlink_tickers(df_tickers_train)
+    unlink_tickers(df_tickers_test)
+
     return learn
+
+
+def verify_custom_env(df):
+    env = CustomEnv(df)
+    check_env(env)
+    del env
+
+
+def unlink_tickers(df_tickers):
+    for ticker in df_tickers:
+        for shared_dataset in ticker:
+            shared_dataset.unlink()
 
 
 if __name__ == "__main__":
