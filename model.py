@@ -115,6 +115,8 @@ class SequenceCNNExtractor(BaseFeaturesExtractor):
                 self.extractors[key] = nn.Flatten()
                 total_concat_size += get_flattened_obs_dim(subspace)
 
+        print(f"feature extractor total_concat_size = {total_concat_size}")
+
         self._features_dim = total_concat_size
 
     def forward(self, observations: th.Tensor) -> th.Tensor:
