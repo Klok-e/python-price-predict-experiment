@@ -1,0 +1,450 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="9250e5c0-0ff2-46bd-a5d0-1d91a3b0a249" name="Changes" comment="upd shared" />
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+        <option value="Jupyter Notebook" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$PROJECT_DIR$/venv/lib/python3.11/site-packages/stable_baselines3/ppo/ppo.py" root0="SKIP_INSPECTION" />
+  </component>
+  <component name="JsbtTreeLayoutManager">
+    <layout place="tools.popupGrunt">
+      <scroll-view-position x="0" y="0" />
+    </layout>
+  </component>
+  <component name="MarkdownSettingsMigration">
+    <option name="stateVersion" value="1" />
+  </component>
+  <component name="ProblemsViewState">
+    <option name="selectedTabId" value="CurrentFile" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 0
+}</component>
+  <component name="ProjectId" id="2UUArR6tRT3gWECOlH3aCei95fO" />
+  <component name="ProjectLevelVcsManager">
+    <ConfirmationsSetting value="1" id="Add" />
+  </component>
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Python.12314.executor&quot;: &quot;Debug&quot;,
+    &quot;Python.backtest.executor&quot;: &quot;Run&quot;,
+    &quot;Python.model_load_backtest.executor&quot;: &quot;Run&quot;,
+    &quot;Python.train_model.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
+    &quot;database.data.extractors.current.export.id&quot;: &quot;Comma-separated (CSV)_id&quot;,
+    &quot;database.data.extractors.current.id&quot;: &quot;Comma-separated (CSV)_id&quot;,
+    &quot;full.screen.before.presentation.mode&quot;: &quot;false&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/mnt/storage/dima/Doc/Documents/Особисте/Проєкти/Projects/price_prediction_experiment&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;settings.codegpt&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  }
+}</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
+      <recent name="$PROJECT_DIR$/cherry-picked-best-models" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/cherry-picked-best-models" />
+      <recent name="$PROJECT_DIR$/rl-model-best-model/best_model" />
+      <recent name="$PROJECT_DIR$/model-weights" />
+    </key>
+  </component>
+  <component name="RunManager" selected="Python.model_load_backtest">
+    <configuration name="12314" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="price_prediction_experiment" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/12314.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="_binance_paper_trading" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="price_prediction_experiment" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/_binance_paper_trading.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="backtest" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="price_prediction_experiment" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/backtest.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="model_backtesting" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="price_prediction_experiment" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/model_backtesting.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="model_load_backtest" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="price_prediction_experiment" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/model_load_backtest.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="train_model" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="price_prediction_experiment" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/train_model.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.train_model" />
+        <item itemvalue="Python.model_load_backtest" />
+        <item itemvalue="Python.model_backtesting" />
+        <item itemvalue="Python.backtest" />
+        <item itemvalue="Python._binance_paper_trading" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-0509580d9d50-28c9f5db9ffe-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-241.14494.241" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="9250e5c0-0ff2-46bd-a5d0-1d91a3b0a249" name="Changes" comment="" />
+      <created>1692983983669</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1692983983669</updated>
+      <workItem from="1692983984752" duration="14955000" />
+      <workItem from="1693003734793" duration="45000" />
+      <workItem from="1693056617322" duration="602000" />
+      <workItem from="1693057270716" duration="18987000" />
+      <workItem from="1693083399997" duration="1953000" />
+      <workItem from="1693137597590" duration="5330000" />
+      <workItem from="1693168550560" duration="1651000" />
+      <workItem from="1693241863906" duration="5956000" />
+      <workItem from="1693328862041" duration="1317000" />
+      <workItem from="1693406965678" duration="2943000" />
+      <workItem from="1693410662097" duration="19609000" />
+      <workItem from="1693488017485" duration="1980000" />
+      <workItem from="1693490021559" duration="50000" />
+      <workItem from="1693490127299" duration="2784000" />
+      <workItem from="1693495938093" duration="26000" />
+      <workItem from="1693495985991" duration="6809000" />
+      <workItem from="1693506855058" duration="7544000" />
+      <workItem from="1693559427081" duration="17000" />
+      <workItem from="1693559459421" duration="2552000" />
+      <workItem from="1693570370919" duration="24855000" />
+      <workItem from="1693604800272" duration="1680000" />
+      <workItem from="1693670819387" duration="2220000" />
+      <workItem from="1693746816424" duration="14113000" />
+      <workItem from="1693930286982" duration="13281000" />
+      <workItem from="1694021622301" duration="6416000" />
+      <workItem from="1694086689167" duration="31071000" />
+      <workItem from="1694160745420" duration="27415000" />
+      <workItem from="1694199778213" duration="7292000" />
+      <workItem from="1694252473417" duration="2698000" />
+      <workItem from="1694255475199" duration="11138000" />
+      <workItem from="1694270916564" duration="1761000" />
+      <workItem from="1694272932332" duration="978000" />
+      <workItem from="1694349537526" duration="23431000" />
+      <workItem from="1694430141110" duration="13987000" />
+      <workItem from="1694543680412" duration="4880000" />
+      <workItem from="1694601446930" duration="15038000" />
+      <workItem from="1694681148762" duration="15000" />
+      <workItem from="1694681695488" duration="8533000" />
+      <workItem from="1694697545753" duration="10296000" />
+      <workItem from="1694804749779" duration="2296000" />
+      <workItem from="1695054247206" duration="1000" />
+      <workItem from="1696718718862" duration="275000" />
+      <workItem from="1696718998923" duration="2783000" />
+      <workItem from="1696762967130" duration="31768000" />
+      <workItem from="1696840479605" duration="2966000" />
+      <workItem from="1697367469429" duration="6785000" />
+      <workItem from="1698575262213" duration="19581000" />
+      <workItem from="1698614505061" duration="691000" />
+      <workItem from="1699192882219" duration="15054000" />
+      <workItem from="1699391916068" duration="4716000" />
+      <workItem from="1699565044143" duration="21000" />
+      <workItem from="1699785086805" duration="6973000" />
+      <workItem from="1703353573428" duration="1231000" />
+      <workItem from="1703435615806" duration="15272000" />
+      <workItem from="1703453593440" duration="447000" />
+      <workItem from="1703525018562" duration="8235000" />
+      <workItem from="1703612517814" duration="9784000" />
+      <workItem from="1703700036211" duration="10424000" />
+      <workItem from="1703925604978" duration="11833000" />
+      <workItem from="1703943244124" duration="1378000" />
+      <workItem from="1703944629764" duration="11865000" />
+      <workItem from="1703961380347" duration="16592000" />
+      <workItem from="1703978898451" duration="2259000" />
+      <workItem from="1704017777180" duration="541000" />
+      <workItem from="1704018645477" duration="7486000" />
+      <workItem from="1704026427834" duration="6064000" />
+      <workItem from="1704036260455" duration="50000" />
+      <workItem from="1704038583128" duration="6213000" />
+      <workItem from="1704063617954" duration="544000" />
+      <workItem from="1704130939589" duration="7296000" />
+      <workItem from="1704219094292" duration="6490000" />
+      <workItem from="1704302843841" duration="7219000" />
+      <workItem from="1704396017619" duration="2266000" />
+      <workItem from="1704560067988" duration="1531000" />
+      <workItem from="1704573194085" duration="1251000" />
+      <workItem from="1704584249925" duration="953000" />
+      <workItem from="1704629572814" duration="46381000" />
+      <workItem from="1705326414606" duration="7521000" />
+      <workItem from="1705395520201" duration="764000" />
+      <workItem from="1705771159586" duration="15721000" />
+      <workItem from="1705843165522" duration="760000" />
+      <workItem from="1712397053749" duration="16883000" />
+      <workItem from="1712435571182" duration="33000" />
+      <workItem from="1712482937371" duration="1471000" />
+      <workItem from="1712485520604" duration="2350000" />
+      <workItem from="1712490471918" duration="26316000" />
+      <workItem from="1712597028560" duration="1118000" />
+      <workItem from="1712600098246" duration="1995000" />
+      <workItem from="1712745024890" duration="1615000" />
+      <workItem from="1712749076934" duration="3879000" />
+      <workItem from="1712753316391" duration="1878000" />
+      <workItem from="1712755828420" duration="7323000" />
+    </task>
+    <task id="LOCAL-00001" summary="Add SharedPandasDataFrame and SharedNumpyArray for sharing data among processes.">
+      <option name="closed" value="true" />
+      <created>1712750512752</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1712750512752</updated>
+    </task>
+    <task id="LOCAL-00002" summary="fix incorrect type">
+      <option name="closed" value="true" />
+      <created>1712750942004</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1712750942004</updated>
+    </task>
+    <task id="LOCAL-00003" summary="Refactor code by adding functions to verify and unlink shared tickers.">
+      <option name="closed" value="true" />
+      <created>1712751968400</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1712751968400</updated>
+    </task>
+    <task id="LOCAL-00004" summary="upd arch">
+      <option name="closed" value="true" />
+      <created>1712752065374</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1712752065374</updated>
+    </task>
+    <task id="LOCAL-00005" summary="stride 2">
+      <option name="closed" value="true" />
+      <created>1712754310559</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1712754310559</updated>
+    </task>
+    <task id="LOCAL-00006" summary="a">
+      <option name="closed" value="true" />
+      <created>1712765921098</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1712765921098</updated>
+    </task>
+    <task id="LOCAL-00007" summary="b">
+      <option name="closed" value="true" />
+      <created>1712765995295</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1712765995295</updated>
+    </task>
+    <task id="LOCAL-00008" summary="change arch">
+      <option name="closed" value="true" />
+      <created>1712767766705</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1712767766705</updated>
+    </task>
+    <task id="LOCAL-00009" summary="upd shared">
+      <option name="closed" value="true" />
+      <created>1712768134779</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1712768134779</updated>
+    </task>
+    <option name="localTasksCounter" value="10" />
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="total_concat_size" />
+    <MESSAGE value="Add SharedPandasDataFrame and SharedNumpyArray for sharing data among processes." />
+    <MESSAGE value="fix incorrect type" />
+    <MESSAGE value="Refactor code by adding functions to verify and unlink shared tickers." />
+    <MESSAGE value="upd arch" />
+    <MESSAGE value="stride 2" />
+    <MESSAGE value="a" />
+    <MESSAGE value="b" />
+    <MESSAGE value="change arch" />
+    <MESSAGE value="upd shared" />
+    <option name="LAST_COMMIT_MESSAGE" value="upd shared" />
+  </component>
+  <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/price_prediction_experiment$backtest.coverage" NAME="backtest Coverage Results" MODIFIED="1703961831567" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/price_prediction_experiment$12314.coverage" NAME="12314 Coverage Results" MODIFIED="1704678703580" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/price_prediction_experiment$train_model.coverage" NAME="train_model Coverage Results" MODIFIED="1704313509269" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/price_prediction_experiment$model_load_backtest.coverage" NAME="model_load_backtest Coverage Results" MODIFIED="1705782602307" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/price_prediction_experiment$binance_paper_trading.coverage" NAME="binance_paper_trading Coverage Results" MODIFIED="1694612525179" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/price_prediction_experiment$model_backtesting.coverage" NAME="model_backtesting Coverage Results" MODIFIED="1693752833340" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+  </component>
+</project>
