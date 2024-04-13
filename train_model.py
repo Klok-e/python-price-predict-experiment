@@ -3,7 +3,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 
 from env import CustomEnv
 from model import LSTMExtractor, MLPExtractor
@@ -49,7 +49,7 @@ def train_model(df_tickers_train, df_tickers_test, net_arch: list[int], timestep
                                                    "model_in_observations": model_window_size,
                                                    "episodes_max": 10},
                             seed=42,
-                            vec_env_cls=SubprocVecEnv)
+                            vec_env_cls=DummyVecEnv)
     eval_callback = EvalCallback(eval_env,
                                  best_model_save_path=f"{directory}/rl-model/{model_save_name}/best-model",
                                  log_path=f"{directory}/rl-model/{model_save_name}/best-model/results",
