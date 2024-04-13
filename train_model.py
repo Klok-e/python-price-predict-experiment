@@ -37,26 +37,26 @@ def train_model(df_tickers_train, df_tickers_test, net_arch: list[int], timestep
                    seed=42)
     print(rl_model.policy)
 
-    checkpoint_callback = CheckpointCallback(
-        save_freq=max(50_000 // n_envs, 1),
-        save_path=f"{directory}/rl-model/{model_save_name}/checkpoints/",
-        name_prefix=model_save_name,
-        verbose=1,
-        save_vecnormalize=True,
-        save_replay_buffer=True
-    )
+    # checkpoint_callback = CheckpointCallback(
+    #     save_freq=max(50_000 // n_envs, 1),
+    #     save_path=f"{directory}/rl-model/{model_save_name}/checkpoints/",
+    #     name_prefix=model_save_name,
+    #     verbose=1,
+    #     save_vecnormalize=True,
+    #     save_replay_buffer=True
+    # )
     eval_env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_test,
                                                    "model_in_observations": model_window_size,
-                                                   "episodes_max": 5},
+                                                   "episodes_max": 10},
                             seed=42,
                             vec_env_cls=SubprocVecEnv)
     eval_callback = EvalCallback(eval_env,
                                  best_model_save_path=f"{directory}/rl-model/{model_save_name}/best-model",
                                  log_path=f"{directory}/rl-model/{model_save_name}/best-model/results",
                                  eval_freq=max(100_000 // n_envs, 1), verbose=1,
-                                 n_eval_episodes=5)
+                                 n_eval_episodes=10)
 
-    learn = rl_model.learn(total_timesteps=timesteps, callback=[checkpoint_callback, eval_callback],
+    learn = rl_model.learn(total_timesteps=timesteps, callback=[eval_callback],  # callback=[checkpoint_callback, eval_callback],
                            tb_log_name=model_save_name)
 
     env.unwrapped.close()
