@@ -68,7 +68,7 @@ class MLPExtractor(BaseFeaturesExtractor):
 
             extractors[key] = nn.Sequential(*layers)
 
-            total_concat_size += hidden_sizes
+            total_concat_size += hidden_sizes[-1]
 
         self.extractors = nn.ModuleDict(extractors)
         self._features_dim = total_concat_size

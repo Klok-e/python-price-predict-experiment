@@ -13,23 +13,8 @@ count = 0
 
 
 # @profile
-def train_model(df_tickers, net_arch: list[int], timesteps: int,
+def train_model(df_tickers_train, df_tickers_test, net_arch: list[int], timesteps: int,
                 model_window_size: int, n_envs: int, directory: str, model_save_name, policy_kwargs: dict):
-    split_date = "2024-02-01"
-
-    df_tickers_train = list(
-        map(lambda ticker: (
-            ticker[0].read().loc[:split_date],
-            ticker[1].read().loc[:split_date],
-            ticker[2],
-            ticker[3]), df_tickers))
-    df_tickers_test = list(
-        map(lambda ticker: (
-            ticker[0].read().loc[split_date:],
-            ticker[1].read().loc[split_date:],
-            ticker[2],
-            ticker[3]), df_tickers))
-
     verify_custom_env(df_tickers_train)
 
     env = make_vec_env(CustomEnv, env_kwargs={"df_tickers": df_tickers_train,
@@ -107,7 +92,8 @@ if __name__ == "__main__":
         for lstm_layers in lstm_layers_list:
             for arch in arch_list:
                 for window_size in window_size_list:
-                    print(f"hidden_size {hidden_size}, lstm_layers {lstm_layers}, window_size {window_size}")
+                    print(
+                        f"hidden_size {hidden_size}, lstm_layers {lstm_layers}, window_size {window_size}")
                     train_model(df_tickers, arch, 500_000, window_size, 5, "data",
                                 f"hs{hidden_size}_lstm{lstm_layers}_net{arch}_ws{window_size}",
                                 dict(features_extractor_class=LSTMExtractor,

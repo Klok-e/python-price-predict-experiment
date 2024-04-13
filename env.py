@@ -19,12 +19,17 @@ class CustomEnv(gym.Env):
         # 0: hold; 1: buy; 2: sell
         self.action_space = spaces.Discrete(3)
 
-        prepro_dataset = df_tickers[0][0]
-        pristine_dataset = df_tickers[0][1]
+        try:
+            prepro_dataset = df_tickers[0][0].read()
+            pristine_dataset = df_tickers[0][1].read()
+        except:
+            prepro_dataset = df_tickers[0][0]
+            pristine_dataset = df_tickers[0][1]
         self.FEATURES_SHAPE = calculate_observation(
             prepro_dataset[:model_in_observations],
             pristine_dataset[:model_in_observations], None)[0]
-        self.FEATURES_SHAPE = {k: v.shape for k, v in self.FEATURES_SHAPE.items()}
+        self.FEATURES_SHAPE = {k: v.shape for k,
+                               v in self.FEATURES_SHAPE.items()}
         print(f"obs length = {self.FEATURES_SHAPE}")
 
         # Update the observation space to include extra information
@@ -48,13 +53,18 @@ class CustomEnv(gym.Env):
         self.episode_idx = 0
         self.episodes = []
         for ticker in df_tickers:
-            ticker_0 = ticker[0]
-            ticker_1 = ticker[1]
+            try:
+                ticker_0 = ticker[0].read()
+                ticker_1 = ticker[1].read()
+            except:
+                ticker_0 = ticker[0]
+                ticker_1 = ticker[1]
             for start_index in range(0, len(ticker_0), self.episode_length):
                 if (len(ticker_0.iloc[start_index:start_index + self.episode_length]) == self.episode_length
                         and len(ticker_1.iloc[start_index:start_index + self.episode_length]) == self.episode_length):
                     self.episodes.append((ticker_0.iloc[start_index:start_index + self.episode_length],
-                                          ticker_1.iloc[start_index:start_index + self.episode_length],
+                                          ticker_1.iloc[start_index:start_index +
+                                                        self.episode_length],
                                           ticker[2],
                                           ticker[3],))
 
@@ -79,15 +89,19 @@ class CustomEnv(gym.Env):
             trade_vector = -1  # Selling 1 unit
             self.holdings += trade_vector
             transaction_cost = self.commission * curr_close * abs(trade_vector)
-            self.cash_balance += (curr_close * abs(trade_vector) - transaction_cost)
+            self.cash_balance += (curr_close *
+                                  abs(trade_vector) - transaction_cost)
             self.buy_price = None  # Reset buy_price upon sale
 
         assert self.holdings <= 1
 
         # Calculate the reward using the formula provided
-        portfolio_value_t = self.cash_balance + np.dot(prev_close, self.holdings)
-        portfolio_value_t_plus_1 = self.cash_balance + np.dot(curr_close, self.holdings)
-        reward = (portfolio_value_t_plus_1 - portfolio_value_t - transaction_cost) / portfolio_value_t
+        portfolio_value_t = self.cash_balance + \
+            np.dot(prev_close, self.holdings)
+        portfolio_value_t_plus_1 = self.cash_balance + \
+            np.dot(curr_close, self.holdings)
+        reward = (portfolio_value_t_plus_1 - portfolio_value_t -
+                  transaction_cost) / portfolio_value_t
 
         reward = np.clip(reward, -1, 1)
 
@@ -143,9 +157,10 @@ class CustomEnv(gym.Env):
     # @profile
     def calculate_observation(self):
         prepro_dataset = self.episodes[self.episode_idx][0][
-                         self.current_step:self.current_step + self.model_in_observations]
+            self.current_step:self.current_step + self.model_in_observations]
         pristine_dataset = self.episodes[self.episode_idx][1][
-                           self.current_step:self.current_step + self.model_in_observations]
-        observation, curr_close, prev_close = calculate_observation(prepro_dataset, pristine_dataset, self.buy_price)
+            self.current_step:self.current_step + self.model_in_observations]
+        observation, curr_close, prev_close = calculate_observation(
+            prepro_dataset, pristine_dataset, self.buy_price)
 
         return observation, curr_close, prev_close

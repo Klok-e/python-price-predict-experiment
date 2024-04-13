@@ -47,10 +47,13 @@ def preprocess_scale(df: pd.DataFrame, scaler=None):
 
     # Apply MinMax scaling to all columns
     if scaler is None:
-        scaler = MultiScaler(MinMaxScaler(feature_range=(-1, 1), copy=False), StandardScaler(copy=False))
-        df_multi_scaled = scaler.min_max.fit_transform(scaler.std.fit_transform(df_all))
+        scaler = MultiScaler(MinMaxScaler(
+            feature_range=(-1, 1), copy=False), StandardScaler(copy=False))
+        df_multi_scaled = scaler.min_max.fit_transform(
+            scaler.std.fit_transform(df_all))
     else:
-        df_multi_scaled = scaler.min_max.transform(scaler.std.transform(df_all))
+        df_multi_scaled = scaler.min_max.transform(
+            scaler.std.transform(df_all))
 
     df_scaled = pd.DataFrame(df_multi_scaled.copy(),
                              columns=df_all.columns,
@@ -71,7 +74,8 @@ def __full_handle_tickers(df_tickers):
     for df_ticker, _ in df_tickers:
         dataset = df_ticker.loc[:, OHLC_COLUMNS].astype(np.float32)
         dataset.index = pd.to_datetime(df_ticker["Open time"], unit='ms')
-        dataset_with_features = preprocess_add_features(pd.DataFrame(dataset, columns=OHLC_COLUMNS))
+        dataset_with_features = preprocess_add_features(
+            pd.DataFrame(dataset, columns=OHLC_COLUMNS))
         datasets.append(dataset_with_features)
 
     combined_dataset = pd.concat(datasets)
@@ -82,12 +86,29 @@ def __full_handle_tickers(df_tickers):
 
     for i, dataset in enumerate(datasets):
         df_scaled, _ = preprocess_scale(dataset, combined_scaler)
-        results.append((SharedPandasDataFrame(df_scaled),
-                        SharedPandasDataFrame(dataset.iloc[1:]),
+        results.append((df_scaled,
+                        dataset.iloc[1:],
                         combined_scaler,
                         df_tickers[i][1]))
 
     return results
+
+
+def split_tickers_train_test(df_tickers, split_date):
+    df_tickers_train = list(
+        map(lambda ticker: (
+            SharedPandasDataFrame(ticker[0].loc[:split_date]),
+            SharedPandasDataFrame(ticker[1].loc[:split_date]),
+            ticker[2],
+            ticker[3]), df_tickers))
+    df_tickers_test = list(
+        map(lambda ticker: (
+            SharedPandasDataFrame(ticker[0].loc[split_date:]),
+            SharedPandasDataFrame(ticker[1].loc[split_date:]),
+            ticker[2],
+            ticker[3]), df_tickers))
+
+    return df_tickers_train, df_tickers_test
 
 
 def __invert_preprocess(original_start, scaler: MultiScaler, df):
@@ -100,8 +121,10 @@ def __invert_preprocess(original_start, scaler: MultiScaler, df):
                                  index=df.index)
 
     # Recover the original OHLC values
-    reversed_array = np.cumprod(1 + df_inv_scaled[OHLC_COLUMNS].to_numpy(), axis=0)
-    reversed_array = reversed_array * original_start  # Scaling by the original_start to each element
+    reversed_array = np.cumprod(
+        1 + df_inv_scaled[OHLC_COLUMNS].to_numpy(), axis=0)
+    # Scaling by the original_start to each element
+    reversed_array = reversed_array * original_start
 
     df_inv_scaled[OHLC_COLUMNS] = reversed_array
 
@@ -136,7 +159,8 @@ def preprocess_add_features(df):
     # df['ADX'] = adx.adx()
 
     # Add Stochastic Oscillator
-    indicator_so = momentum.StochasticOscillator(high=df['High'], low=df['Low'], close=df['Close'])
+    indicator_so = momentum.StochasticOscillator(
+        high=df['High'], low=df['Low'], close=df['Close'])
     df['stoch'] = indicator_so.stoch()
 
     # Drop NaN rows resulting from the indicator calculations
@@ -157,7 +181,8 @@ def calculate_observation(preprocessed_df, pristine_df, buy_price):
     buy_status = 1 if buy_price is not None else 0
     observation = {
         OBS_PRICES_SEQUENCE: previous_prices.astype(np.float32),
-        OBS_OTHER: np.concatenate([[buy_status], [current_gain]]).astype(np.float32)
+        OBS_OTHER: np.concatenate(
+            [[buy_status], [current_gain]]).astype(np.float32)
     }
 
     return observation, curr_close, prev_close
@@ -197,7 +222,8 @@ def test_orig_val(dataset):
     range1_inv = __invert_preprocess(range_orig.iloc[0], s, range_preproc)
 
     # Inverted for the latter part of the preprocessed range
-    range2_inv = __invert_preprocess(range_orig.iloc[500], s, range_preproc.iloc[500:])
+    range2_inv = __invert_preprocess(
+        range_orig.iloc[500], s, range_preproc.iloc[500:])
 
     # Due to floating point errors, equality may not be exact. So you might use pd.testing.assert_frame_equal
     # with the check_exact=False parameter
@@ -222,7 +248,8 @@ def __download_data(data_dir):
 
 def __get_df_for_ticker(data_dir, ticker):
     minute_klines_dir = f"{data_dir}/spot/monthly/klines/{ticker}/1m"
-    filenames = next(os.walk(minute_klines_dir), (None, None, []))[2]  # [] if no file
+    filenames = next(os.walk(minute_klines_dir), (None, None, []))[
+        2]  # [] if no file
 
     columns = [
         "Open time",
@@ -242,8 +269,10 @@ def __get_df_for_ticker(data_dir, ticker):
     df = pd.DataFrame(columns=columns)
 
     for f in filenames:
-        new_df = pd.read_csv(f"{minute_klines_dir}/{f}", header=None, names=columns)
-        df = pd.concat([d for d in [df, new_df] if not d.empty], ignore_index=True)
+        new_df = pd.read_csv(f"{minute_klines_dir}/{f}",
+                             header=None, names=columns)
+        df = pd.concat([d for d in [df, new_df] if not d.empty],
+                       ignore_index=True)
     df = df.sort_values(by="Open time")
     return df
 
