@@ -107,9 +107,9 @@ class CustomEnv(gym.Env):
                   transaction_cost) / portfolio_value_t
 
         if self.operations_performed < 2:
-            reward = -1
+            reward = -1.0
 
-        reward = np.clip(reward, -1, 1)
+        reward = np.clip(reward, -1.0, 1.0)
 
         # Update the step
         self.current_step += 1
