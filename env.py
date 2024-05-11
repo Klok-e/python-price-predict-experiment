@@ -45,7 +45,8 @@ class CustomEnv(gym.Env):
         self.episode_length = episode_length
         self.buy_price = None
         self.holdings = 0
-        self.cash_balance = 1_000_000
+        self.cash_balance = 10000
+        self.operations_performed = 0
 
         self.model_in_observations = model_in_observations
 
@@ -85,6 +86,7 @@ class CustomEnv(gym.Env):
             transaction_cost = self.commission * curr_close * trade_vector
             self.cash_balance -= (curr_close * trade_vector + transaction_cost)
             self.buy_price = curr_close
+            self.operations_performed += 1
         elif action == 2 and self.buy_price is not None:  # Sell
             trade_vector = -1  # Selling 1 unit
             self.holdings += trade_vector
@@ -92,6 +94,7 @@ class CustomEnv(gym.Env):
             self.cash_balance += (curr_close *
                                   abs(trade_vector) - transaction_cost)
             self.buy_price = None  # Reset buy_price upon sale
+            self.operations_performed += 1
 
         assert self.holdings <= 1
 
@@ -102,6 +105,9 @@ class CustomEnv(gym.Env):
             np.dot(curr_close, self.holdings)
         reward = (portfolio_value_t_plus_1 - portfolio_value_t -
                   transaction_cost) / portfolio_value_t
+
+        if self.operations_performed < 2:
+            reward = -1
 
         reward = np.clip(reward, -1, 1)
 
@@ -140,7 +146,8 @@ class CustomEnv(gym.Env):
 
         self.buy_price = None
         self.holdings = 0
-        self.cash_balance = 1000
+        self.cash_balance = 10000
+        self.operations_performed = 0
 
         # print(f"episode {self.episode_idx}; ticker {self.episodes[self.episode_idx][3]}")
 
