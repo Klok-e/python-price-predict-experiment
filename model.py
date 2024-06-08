@@ -9,20 +9,44 @@ from util import OBS_PRICES_SEQUENCE, OBS_OTHER
 
 
 class LSTMExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space: spaces.Dict, lstm_hidden_size=32, lstm_layers=1):
+    def __init__(
+        self,
+        observation_space: spaces.Dict,
+        lstm_hidden_size=32,
+        lstm_layers=1,
+        linear_arch=[64, 64, 64],
+    ):
         super().__init__(observation_space, features_dim=1)
 
         extractors = {}
         total_concat_size = 0
-        # We need to know size of the output of this extractor,
-        # so go over all the spaces and compute output feature sizes
+        self.linear_arch = linear_arch
+
+        # We'll use this to create the sequence of linear layers before LSTM
+        linear_layers = []
+
         for key, subspace in observation_space.spaces.items():
             if key == OBS_PRICES_SEQUENCE:
-                # Assuming sequence length is `seq_len` and feature number is `n_features`
                 seq_len, n_features = subspace.shape
-                extractors[key] = nn.LSTM(input_size=n_features, hidden_size=lstm_hidden_size, batch_first=True,
-                                          num_layers=lstm_layers)
-                total_concat_size += lstm_hidden_size  # hidden_dim is the LSTM output size
+                current_input_size = n_features
+
+                # Create linear layers from architecture
+                for i in range(len(linear_arch)):
+                    linear_layers.append(nn.Linear(current_input_size, linear_arch[i]))
+                    linear_layers.append(nn.ReLU())
+                    current_input_size = linear_arch[i]
+
+                # Finished with linear layers
+                self.linear_layers = nn.Sequential(*linear_layers)
+
+                # Add LSTM after linear layers
+                extractors[key] = nn.LSTM(
+                    input_size=current_input_size,
+                    hidden_size=lstm_hidden_size,
+                    batch_first=True,
+                    num_layers=lstm_layers,
+                )
+                total_concat_size += lstm_hidden_size
             elif key == OBS_OTHER:
                 extractors[key] = nn.Flatten()
                 total_concat_size += get_flattened_obs_dim(subspace)
@@ -38,14 +62,21 @@ class LSTMExtractor(BaseFeaturesExtractor):
         for key, extractor in self.extractors.items():
             obs_data = observations[key]
             if key == OBS_PRICES_SEQUENCE:
-                # LSTM expects input of shape (batch, seq_len, input_size)
-                obs_data = obs_data.view(obs_data.size(0), -1, extractor.input_size)  # reshape if necessary
+                # Apply linear layers first
+                batch_size, seq_len, n_features = obs_data.shape
+                obs_data = obs_data.view(-1, n_features)
+                obs_data = self.linear_layers(obs_data)
+                obs_data = obs_data.view(
+                    batch_size, seq_len, -1
+                )  # reshape back to (batch, seq_len, output_size)
+
+                # Now obs_data is the input to LSTM
                 out, _ = extractor(obs_data)
                 # Using only the last output tensor (hidden state)
                 encoded_tensor_list.append(out[:, -1, :])
             else:
                 encoded_tensor_list.append(extractor(obs_data))
-        # print(list(map(lambda x: x.shape, encoded_tensor_list)))
+
         return th.cat(encoded_tensor_list, dim=1)
 
 
@@ -63,7 +94,7 @@ class MLPExtractor(BaseFeaturesExtractor):
             layers = [nn.Flatten()]
             for out_channels in hidden_sizes:
                 layers.append(nn.Linear(in_channels, out_channels))
-                layers.append(nn.LeakyReLU())
+                layers.append(nn.ReLU())
                 in_channels = out_channels
 
             extractors[key] = nn.Sequential(*layers)
@@ -84,11 +115,14 @@ class MLPExtractor(BaseFeaturesExtractor):
 
 
 class SequenceCNNExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space: spaces.Dict,
-                 cnn_channels=None,
-                 kernel_size=None,
-                 stride=None,
-                 padding=None):
+    def __init__(
+        self,
+        observation_space: spaces.Dict,
+        cnn_channels=None,
+        kernel_size=None,
+        stride=None,
+        padding=None,
+    ):
         super().__init__(observation_space, features_dim=1)
 
         if cnn_channels is None:
@@ -109,14 +143,23 @@ class SequenceCNNExtractor(BaseFeaturesExtractor):
                 layers = []
                 in_channels = n_features
                 for out_channels in cnn_channels:
-                    layers.append(nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size,
-                                            stride=stride, padding=padding))
-                    layers.append(nn.LeakyReLU())
+                    layers.append(
+                        nn.Conv1d(
+                            in_channels=in_channels,
+                            out_channels=out_channels,
+                            kernel_size=kernel_size,
+                            stride=stride,
+                            padding=padding,
+                        )
+                    )
+                    layers.append(nn.ReLU())
                     in_channels = out_channels
                 layers.append(nn.Flatten())
                 self.extractors[key] = nn.Sequential(*layers)
                 # Calculate output size
-                output_size = self._calculate_cnn_output_size(seq_len, cnn_channels, kernel_size, stride, padding)
+                output_size = self._calculate_cnn_output_size(
+                    seq_len, cnn_channels, kernel_size, stride, padding
+                )
                 total_concat_size += output_size
             elif key == OBS_OTHER:
                 self.extractors[key] = nn.Flatten()
@@ -144,13 +187,20 @@ class SequenceCNNExtractor(BaseFeaturesExtractor):
     def _calculate_cnn_output_size(seq_len, cnn_channels, kernel_size, stride, padding):
         output_size = seq_len
         for _ in cnn_channels:
-            output_size = (output_size + 2 * padding - (kernel_size - 1) - 1) // stride + 1
+            output_size = (
+                output_size + 2 * padding - (kernel_size - 1) - 1
+            ) // stride + 1
         return output_size * cnn_channels[-1]
 
 
 class TransformerExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space: spaces.Dict, transformer_hidden_size=64, transformer_heads=4,
-                 transformer_layers=1):
+    def __init__(
+        self,
+        observation_space: spaces.Dict,
+        transformer_hidden_size=64,
+        transformer_heads=4,
+        transformer_layers=1,
+    ):
         super().__init__(observation_space, features_dim=1)
 
         extractors = {}
@@ -163,15 +213,16 @@ class TransformerExtractor(BaseFeaturesExtractor):
                     d_model=n_features,
                     nhead=transformer_heads,
                     dim_feedforward=transformer_hidden_size,
-                    batch_first=True
+                    batch_first=True,
                 )
                 extractors[key] = nn.TransformerEncoder(
-                    transformer_layer,
-                    num_layers=transformer_layers
+                    transformer_layer, num_layers=transformer_layers
                 )
                 total_concat_size += n_features
-                self.positional_encoding = nn.Parameter(self.create_positional_encoding(seq_len, n_features),
-                                                        requires_grad=False)
+                self.positional_encoding = nn.Parameter(
+                    self.create_positional_encoding(seq_len, n_features),
+                    requires_grad=False,
+                )
             elif key == OBS_OTHER:
                 extractors[key] = nn.Flatten()
                 total_concat_size += get_flattened_obs_dim(subspace)

@@ -9,18 +9,12 @@ from binance_historical_data import BinanceDataDumper
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from ta import trend, momentum
 
-OHLC_COLUMNS = [
-    "Open",
-    "High",
-    "Low",
-    "Close"]
+OHLC_COLUMNS = ["Open", "High", "Low", "Close"]
 
 OBS_OTHER = "other"
 OBS_PRICES_SEQUENCE = "prices_sequence"
 
-TICKERS = [
-    "NEARUSDT", "SOLUSDT", "BTCUSDT", "ETHUSDT", "BNBUSDT"
-]
+TICKERS = ["NEARUSDT", "SOLUSDT", "BTCUSDT", "ETHUSDT", "BNBUSDT"]
 
 BINANCE_DATA_START_DATE = datetime.date(2021, 1, 1)
 
@@ -47,17 +41,16 @@ def preprocess_scale(df: pd.DataFrame, scaler=None):
 
     # Apply MinMax scaling to all columns
     if scaler is None:
-        scaler = MultiScaler(MinMaxScaler(
-            feature_range=(-1, 1), copy=False), StandardScaler(copy=False))
-        df_multi_scaled = scaler.min_max.fit_transform(
-            scaler.std.fit_transform(df_all))
+        scaler = MultiScaler(
+            MinMaxScaler(feature_range=(-1, 1), copy=False), StandardScaler(copy=False)
+        )
+        df_multi_scaled = scaler.min_max.fit_transform(scaler.std.fit_transform(df_all))
     else:
-        df_multi_scaled = scaler.min_max.transform(
-            scaler.std.transform(df_all))
+        df_multi_scaled = scaler.min_max.transform(scaler.std.transform(df_all))
 
-    df_scaled = pd.DataFrame(df_multi_scaled.copy(),
-                             columns=df_all.columns,
-                             index=df_all.index)
+    df_scaled = pd.DataFrame(
+        df_multi_scaled.copy(), columns=df_all.columns, index=df_all.index
+    )
 
     return df_scaled, scaler
 
@@ -73,9 +66,10 @@ def __full_handle_tickers(df_tickers):
 
     for df_ticker, _ in df_tickers:
         dataset = df_ticker.loc[:, OHLC_COLUMNS].astype(np.float32)
-        dataset.index = pd.to_datetime(df_ticker["Open time"], unit='ms')
+        dataset.index = pd.to_datetime(df_ticker["Open time"], unit="ms")
         dataset_with_features = preprocess_add_features(
-            pd.DataFrame(dataset, columns=OHLC_COLUMNS))
+            pd.DataFrame(dataset, columns=OHLC_COLUMNS)
+        )
         datasets.append(dataset_with_features)
 
     combined_dataset = pd.concat(datasets)
@@ -86,27 +80,36 @@ def __full_handle_tickers(df_tickers):
 
     for i, dataset in enumerate(datasets):
         df_scaled, _ = preprocess_scale(dataset, combined_scaler)
-        results.append((df_scaled,
-                        dataset.iloc[1:],
-                        combined_scaler,
-                        df_tickers[i][1]))
+        results.append((df_scaled, dataset.iloc[1:], combined_scaler, df_tickers[i][1]))
 
     return results
 
 
-def split_tickers_train_test(df_tickers, split_date):
+def split_tickers_train_test(df_tickers, last_days):
     df_tickers_train = list(
-        map(lambda ticker: (
-            SharedPandasDataFrame(ticker[0].loc[:split_date]),
-            SharedPandasDataFrame(ticker[1].loc[:split_date]),
-            ticker[2],
-            ticker[3]), df_tickers))
+        map(
+            lambda ticker: (
+                SharedPandasDataFrame(ticker[0]),
+                SharedPandasDataFrame(ticker[1]),
+                ticker[2],
+                ticker[3],
+            ),
+            df_tickers,
+        )
+    )
+
+    last_date = df_tickers[0][0].index.max() - pd.Timedelta(days=last_days)
     df_tickers_test = list(
-        map(lambda ticker: (
-            SharedPandasDataFrame(ticker[0].loc[split_date:]),
-            SharedPandasDataFrame(ticker[1].loc[split_date:]),
-            ticker[2],
-            ticker[3]), df_tickers))
+        map(
+            lambda ticker: (
+                SharedPandasDataFrame(ticker[0].loc[last_date:]),
+                SharedPandasDataFrame(ticker[1].loc[last_date:]),
+                ticker[2],
+                ticker[3],
+            ),
+            df_tickers,
+        )
+    )
 
     return df_tickers_train, df_tickers_test
 
@@ -116,13 +119,14 @@ def __invert_preprocess(original_start, scaler: MultiScaler, df):
 
     original_start = original_start[OHLC_COLUMNS].to_numpy()
     # Invert MinMax scaling for all columns
-    df_inv_scaled = pd.DataFrame(scaler.std.inverse_transform(scaler.min_max.inverse_transform(df.to_numpy())),
-                                 columns=df.columns,
-                                 index=df.index)
+    df_inv_scaled = pd.DataFrame(
+        scaler.std.inverse_transform(scaler.min_max.inverse_transform(df.to_numpy())),
+        columns=df.columns,
+        index=df.index,
+    )
 
     # Recover the original OHLC values
-    reversed_array = np.cumprod(
-        1 + df_inv_scaled[OHLC_COLUMNS].to_numpy(), axis=0)
+    reversed_array = np.cumprod(1 + df_inv_scaled[OHLC_COLUMNS].to_numpy(), axis=0)
     # Scaling by the original_start to each element
     reversed_array = reversed_array * original_start
 
@@ -134,21 +138,21 @@ def __invert_preprocess(original_start, scaler: MultiScaler, df):
 def preprocess_add_features(df):
     df = df.copy()
     # Add Simple Moving Averages (SMAs)
-    df['SMA_256'] = df['Close'].rolling(window=256).mean()
-    df['SMA_512'] = df['Close'].rolling(window=512).mean()
-    df['SMA_1024'] = df['Close'].rolling(window=1024).mean()
+    df["SMA_256"] = df["Close"].rolling(window=256).mean()
+    df["SMA_512"] = df["Close"].rolling(window=512).mean()
+    df["SMA_1024"] = df["Close"].rolling(window=1024).mean()
 
     # Convert SMA columns to distance in percentages from "Close"
-    df['SMA_256'] = ((df['Close'] - df['SMA_256']) / df['SMA_256'])
-    df['SMA_512'] = ((df['Close'] - df['SMA_512']) / df['SMA_512'])
-    df['SMA_1024'] = ((df['Close'] - df['SMA_1024']) / df['SMA_1024'])
+    df["SMA_256"] = (df["Close"] - df["SMA_256"]) / df["SMA_256"]
+    df["SMA_512"] = (df["Close"] - df["SMA_512"]) / df["SMA_512"]
+    df["SMA_1024"] = (df["Close"] - df["SMA_1024"]) / df["SMA_1024"]
 
     # Add MACD
-    macd = trend.MACD(df['Close'])
-    df['MACD_diff'] = macd.macd_diff()
+    macd = trend.MACD(df["Close"])
+    df["MACD_diff"] = macd.macd_diff()
 
     # Add RSI
-    df['RSI'] = momentum.RSIIndicator(df['Close']).rsi()
+    df["RSI"] = momentum.RSIIndicator(df["Close"]).rsi()
 
     # Add CCI
     # cci = trend.CCIIndicator(df['High'], df['Low'], df['Close'])
@@ -160,8 +164,9 @@ def preprocess_add_features(df):
 
     # Add Stochastic Oscillator
     indicator_so = momentum.StochasticOscillator(
-        high=df['High'], low=df['Low'], close=df['Close'])
-    df['stoch'] = indicator_so.stoch()
+        high=df["High"], low=df["Low"], close=df["Close"]
+    )
+    df["stoch"] = indicator_so.stoch()
 
     # Drop NaN rows resulting from the indicator calculations
     df.dropna(inplace=True)
@@ -176,13 +181,12 @@ def calculate_observation(preprocessed_df, pristine_df, buy_price):
     if buy_price is None:
         current_gain = 0
     else:
-        current_gain = ((curr_close - buy_price) / buy_price)
+        current_gain = (curr_close - buy_price) / buy_price
     previous_prices = preprocessed_df.to_numpy()  # shape = (N, 7)
     buy_status = 1 if buy_price is not None else 0
     observation = {
         OBS_PRICES_SEQUENCE: previous_prices.astype(np.float32),
-        OBS_OTHER: np.concatenate(
-            [[buy_status], [current_gain]]).astype(np.float32)
+        OBS_OTHER: np.concatenate([[buy_status], [current_gain]]).astype(np.float32),
     }
 
     return observation, curr_close, prev_close
@@ -190,6 +194,7 @@ def calculate_observation(preprocessed_df, pristine_df, buy_price):
 
 def test_preprocess_invert_preprocess(original_df):
     from sklearn.metrics import mean_absolute_error
+
     preprocessed_df, scaler = preprocess_scale(original_df)
 
     # Assume that 'original_start' is the first row of the original DataFrame
@@ -222,13 +227,15 @@ def test_orig_val(dataset):
     range1_inv = __invert_preprocess(range_orig.iloc[0], s, range_preproc)
 
     # Inverted for the latter part of the preprocessed range
-    range2_inv = __invert_preprocess(
-        range_orig.iloc[500], s, range_preproc.iloc[500:])
+    range2_inv = __invert_preprocess(range_orig.iloc[500], s, range_preproc.iloc[500:])
 
     # Due to floating point errors, equality may not be exact. So you might use pd.testing.assert_frame_equal
     # with the check_exact=False parameter
-    pd.testing.assert_frame_equal(range1_inv.iloc[500:].reset_index(drop=True),
-                                  range2_inv.reset_index(drop=True), check_exact=False)
+    pd.testing.assert_frame_equal(
+        range1_inv.iloc[500:].reset_index(drop=True),
+        range2_inv.reset_index(drop=True),
+        check_exact=False,
+    )
 
 
 def __download_data(data_dir):
@@ -243,13 +250,14 @@ def __download_data(data_dir):
 
     data_dumper.dump_data(tickers=TICKERS, date_start=BINANCE_DATA_START_DATE)
 
-    return list(zip(map(lambda ticker: __get_df_for_ticker(data_dir, ticker), TICKERS), TICKERS))
+    return list(
+        zip(map(lambda ticker: __get_df_for_ticker(data_dir, ticker), TICKERS), TICKERS)
+    )
 
 
 def __get_df_for_ticker(data_dir, ticker):
     minute_klines_dir = f"{data_dir}/spot/monthly/klines/{ticker}/1m"
-    filenames = next(os.walk(minute_klines_dir), (None, None, []))[
-        2]  # [] if no file
+    filenames = next(os.walk(minute_klines_dir), (None, None, []))[2]  # [] if no file
 
     columns = [
         "Open time",
@@ -263,16 +271,14 @@ def __get_df_for_ticker(data_dir, ticker):
         "Number of trades",
         "Taker buy base asset volume",
         "Taker buy quote asset volume",
-        "Ignore"
+        "Ignore",
     ]
 
     df = pd.DataFrame(columns=columns)
 
     for f in filenames:
-        new_df = pd.read_csv(f"{minute_klines_dir}/{f}",
-                             header=None, names=columns)
-        df = pd.concat([d for d in [df, new_df] if not d.empty],
-                       ignore_index=True)
+        new_df = pd.read_csv(f"{minute_klines_dir}/{f}", header=None, names=columns)
+        df = pd.concat([d for d in [df, new_df] if not d.empty], ignore_index=True)
     df = df.sort_values(by="Open time")
     return df
 
@@ -283,13 +289,13 @@ def save_pickle(data, filename):
         os.makedirs(dirname)
 
     # Save the processed data to disk
-    with open(filename, 'wb') as file:
+    with open(filename, "wb") as file:
         pickle.dump(data, file)
 
 
 def load_pickle(filename):
     # Load the processed data from disk
-    with open(filename, 'rb') as file:
+    with open(filename, "rb") as file:
         return pickle.load(file)
 
 
@@ -312,7 +318,7 @@ def create_synthetic_price_data():
     import pandas as pd
     from datetime import datetime, timedelta
 
-    def generate_synthetic_data(tickers, start_date, end_date, freq='1T'):
+    def generate_synthetic_data(tickers, start_date, end_date, freq="1T"):
         data = []
         date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
         time_steps = np.arange(len(date_range))
@@ -325,14 +331,16 @@ def create_synthetic_price_data():
 
             volumes = np.random.randint(100, 10000, size=len(date_range))
 
-            df = pd.DataFrame({
-                'Open time': date_range,
-                'Open': prices,
-                'High': prices,
-                'Low': prices,
-                'Close': prices,
-                'Volume': volumes
-            })
+            df = pd.DataFrame(
+                {
+                    "Open time": date_range,
+                    "Open": prices,
+                    "High": prices,
+                    "Low": prices,
+                    "Close": prices,
+                    "Volume": volumes,
+                }
+            )
             data.append((df, ticker))
         return data
 
@@ -366,9 +374,7 @@ class SharedPandasDataFrame:
         without unnecessary copying.
         """
         return pd.DataFrame(
-            self._values.read(),
-            index=self._index,
-            columns=self._columns
+            self._values.read(), index=self._index, columns=self._columns
         )
 
     def copy(self):
@@ -376,9 +382,7 @@ class SharedPandasDataFrame:
         Returns a new copy of the dataframe stored in shared memory.
         """
         return pd.DataFrame(
-            self._values.copy(),
-            index=self._index,
-            columns=self._columns
+            self._values.copy(), index=self._index, columns=self._columns
         )
 
     def unlink(self):
@@ -407,9 +411,7 @@ class SharedNumpyArray:
 
         # create a new numpy array that uses the shared memory we created.
         # at first, it is filled with zeros
-        res = np.ndarray(
-            self._shape, dtype=self._dtype, buffer=self._shared.buf
-        )
+        res = np.ndarray(self._shape, dtype=self._dtype, buffer=self._shared.buf)
 
         # copy data from the array to the shared memory. numpy will
         # take care of copying everything in the correct format
