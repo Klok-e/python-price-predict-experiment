@@ -4,6 +4,7 @@ from stable_baselines3.common.preprocessing import get_flattened_obs_dim
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from torch import nn
 import torch as th
+from typing import Dict
 
 from util import OBS_PRICES_SEQUENCE, OBS_OTHER
 
