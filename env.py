@@ -159,7 +159,7 @@ class CustomEnv(gym.Env):
         if (
             len(self.episodes[self.episode_idx][0])
             < self.current_step + self.model_in_observations
-            or portfolio_value_t_plus_1 <= 0
+            or portfolio_value_t_plus_1 <= 10
         ):
             terminated = True
 

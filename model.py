@@ -167,7 +167,7 @@ class SequenceCNNExtractor(BaseFeaturesExtractor):
                             padding=padding,
                         )
                     )
-                    layers.append(nn.PReLU())
+                    layers.append(nn.ReLU())
                     in_channels = out_channels
                 layers.append(nn.Flatten())
                 self.extractors[key] = nn.Sequential(*layers)

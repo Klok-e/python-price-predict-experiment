@@ -14,10 +14,7 @@ OHLC_COLUMNS = ["Open", "High", "Low", "Close"]
 OBS_OTHER = "other"
 OBS_PRICES_SEQUENCE = "prices_sequence"
 
-# TICKERS = ["NEARUSDT", "SOLUSDT", "BTCUSDT", "ETHUSDT", "BNBUSDT"]
-TICKERS = [
-    "NEARUSDT",
-]
+TICKERS = ["NEARUSDT", "SOLUSDT", "BTCUSDT", "ETHUSDT", "BNBUSDT"]
 
 BINANCE_DATA_START_DATE = datetime.date(2021, 1, 1)
 
