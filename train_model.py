@@ -42,7 +42,7 @@ def train_model(
             env_kwargs={
                 "df_tickers": df_tickers_test,
                 "model_in_observations": model_window_size,
-                "episodes_max": 2,
+                "episodes_max": 5,
             },
             seed=42,
             vec_env_cls=DummyVecEnv,
@@ -81,7 +81,7 @@ def train_model(
             log_path=f"{directory}/rl-model/{model_save_name}/best-model/results",
             eval_freq=max(100_000 // n_envs, 1),
             verbose=1,
-            n_eval_episodes=2,
+            n_eval_episodes=5,
         )
 
         learn = rl_model.learn(
