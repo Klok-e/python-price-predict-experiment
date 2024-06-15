@@ -10,47 +10,20 @@ from util import OBS_PRICES_SEQUENCE, OBS_OTHER
 
 
 class LinearLSTM(nn.Module):
-    def __init__(
-        self, input_size, lstm_hidden_size, lstm_layers, linear_arch, linear_arch_after
-    ):
+    def __init__(self, lstm_hidden_size, lstm_layers):
         super().__init__()
-        linear_layers = []
-        current_input_size = input_size
-
-        for hidden_size in linear_arch:
-            linear_layers.append(nn.Linear(current_input_size, hidden_size))
-            linear_layers.append(nn.ReLU())
-            current_input_size = hidden_size
-
-        self.linear_layers = nn.Sequential(*linear_layers)
         self.lstm_layer = nn.LSTM(
-            input_size=current_input_size,
+            input_size=lstm_hidden_size,  # The input size to the LSTM will be the output size of the linear layers before it
             hidden_size=lstm_hidden_size,
             batch_first=True,
             num_layers=lstm_layers,
         )
 
-        linear_layers_after = []
-        current_input_size = lstm_hidden_size
-        for hidden_size in linear_arch_after:
-            linear_layers_after.append(nn.Linear(current_input_size, hidden_size))
-            linear_layers_after.append(nn.ReLU())
-            current_input_size = hidden_size
-
-        self.linear_layers_after = nn.Sequential(*linear_layers_after)
-        self.output_size = current_input_size
-
     def forward(self, x):
-        batch_size, seq_len, n_features = x.shape
-        # Flatten input to (batch*seq_len, n_features)
-        x = x.view(-1, n_features)
-        x = self.linear_layers(x)  # Apply linear layers
-        # Reshape back to (batch, seq_len, last_layer_size)
-        x = x.view(batch_size, seq_len, -1)
         lstm_out, _ = self.lstm_layer(x)  # Apply LSTM
-        # Apply linear layers after LSTM on the last output tensor
-        x = self.linear_layers_after(lstm_out[:, -1, :])
-        return x
+        return lstm_out[
+            :, -1, :
+        ]  # Return the last LSTM output for each element in the batch
 
 
 class LSTMExtractor(BaseFeaturesExtractor):
@@ -60,41 +33,66 @@ class LSTMExtractor(BaseFeaturesExtractor):
         lstm_hidden_size=32,
         lstm_layers=1,
         linear_arch=[64, 64, 64],
-        linear_arch_after=[64],
+        linear_arch_after=[64, 64],
     ):
         super().__init__(observation_space, features_dim=1)
 
-        extractors = {}
-        total_concat_size = 0
+        # Extract features dimension from the observation spaces
+        seq_len, n_features = observation_space.spaces[OBS_PRICES_SEQUENCE].shape
+        other_features_dim = get_flattened_obs_dim(observation_space.spaces[OBS_OTHER])
 
-        for key, subspace in observation_space.spaces.items():
-            if key == OBS_PRICES_SEQUENCE:
-                seq_len, n_features = subspace.shape
-                extractors[key] = LinearLSTM(
-                    n_features,
-                    lstm_hidden_size,
-                    lstm_layers,
-                    linear_arch,
-                    linear_arch_after,
-                )
-                total_concat_size += lstm_hidden_size
-            elif key == OBS_OTHER:
-                extractors[key] = nn.Flatten()
-                total_concat_size += get_flattened_obs_dim(subspace)
+        # Linear layers before LSTM
+        linear_layers_before = []
+        current_input_size = n_features
+        for hidden_size in linear_arch:
+            linear_layers_before.append(nn.Linear(current_input_size, hidden_size))
+            linear_layers_before.append(nn.ReLU())
+            current_input_size = hidden_size
 
-        self.extractors = nn.ModuleDict(extractors)
+        self.linear_layers_before = nn.Sequential(*linear_layers_before)
 
-        # Update the features dim manually
-        self._features_dim = total_concat_size
+        # LSTM
+        self.lstm = LinearLSTM(current_input_size, lstm_layers)
+
+        # Combine the output of LSTM and OBS_OTHER
+        combined_input_size = lstm_hidden_size + other_features_dim
+
+        linear_layers_after = []
+        current_input_size = combined_input_size
+        for hidden_size in linear_arch_after:
+            linear_layers_after.append(nn.Linear(current_input_size, hidden_size))
+            linear_layers_after.append(nn.ReLU())
+            current_input_size = hidden_size
+
+        self.linear_layers_after = nn.Sequential(*linear_layers_after)
+
+        # Update the features dimension
+        self._features_dim = current_input_size
 
     def forward(self, observations: Dict[str, th.Tensor]) -> th.Tensor:
-        encoded_tensor_list = []
+        # Handle OBS_PRICES_SEQUENCE using linear layers before and then LSTM
+        price_sequence = observations[OBS_PRICES_SEQUENCE]
+        batch_size, seq_len, n_features = price_sequence.shape
+        # Flatten input to (batch*seq_len, n_features)
+        price_sequence = price_sequence.view(-1, n_features)
+        price_sequence = self.linear_layers_before(
+            price_sequence
+        )  # Apply linear layers before LSTM
+        # Reshape back to (batch, seq_len, last_layer_size)
+        price_sequence = price_sequence.view(batch_size, seq_len, -1)
+        lstm_output = self.lstm(price_sequence)
 
-        for key, extractor in self.extractors.items():
-            obs_data = observations[key]
-            encoded_tensor_list.append(extractor(obs_data))
+        # Handle OBS_OTHER using flattening
+        other_data = observations[OBS_OTHER]
+        other_flatten = other_data.view(other_data.size(0), -1)
 
-        return th.cat(encoded_tensor_list, dim=1)
+        # Combine the outputs from LSTM and OBS_OTHER (flattened)
+        combined = th.cat([lstm_output, other_flatten], dim=1)
+
+        # Apply the linear layers after combining
+        encoded_output = self.linear_layers_after(combined)
+
+        return encoded_output
 
 
 class MLPExtractor(BaseFeaturesExtractor):
