@@ -10,10 +10,10 @@ from util import OBS_PRICES_SEQUENCE, OBS_OTHER
 
 
 class LinearLSTM(nn.Module):
-    def __init__(self, lstm_hidden_size, lstm_layers):
+    def __init__(self, input_size, lstm_hidden_size, lstm_layers):
         super().__init__()
         self.lstm_layer = nn.LSTM(
-            input_size=lstm_hidden_size,  # The input size to the LSTM will be the output size of the linear layers before it
+            input_size=input_size,
             hidden_size=lstm_hidden_size,
             batch_first=True,
             num_layers=lstm_layers,
@@ -52,7 +52,7 @@ class LSTMExtractor(BaseFeaturesExtractor):
         self.linear_layers_before = nn.Sequential(*linear_layers_before)
 
         # LSTM
-        self.lstm = LinearLSTM(current_input_size, lstm_layers)
+        self.lstm = LinearLSTM(current_input_size, lstm_hidden_size, lstm_layers)
 
         # Combine the output of LSTM and OBS_OTHER
         combined_input_size = lstm_hidden_size + other_features_dim
