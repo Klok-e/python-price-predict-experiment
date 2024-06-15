@@ -4,12 +4,23 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-from util import calculate_observation, OBS_PRICES_SEQUENCE, OBS_OTHER, SharedPandasDataFrame
+from util import (
+    calculate_observation,
+    OBS_PRICES_SEQUENCE,
+    OBS_OTHER,
+    SharedPandasDataFrame,
+)
 
 
 class CustomEnv(gym.Env):
-    def __init__(self, df_tickers, episode_length=1024, episodes_max=None,
-                 commission=0.001, model_in_observations=64):
+    def __init__(
+        self,
+        df_tickers,
+        episode_length=1024,
+        episodes_max=None,
+        commission=0.001,
+        model_in_observations=64,
+    ):
         super().__init__()
 
         self.random_gen = None
@@ -27,19 +38,29 @@ class CustomEnv(gym.Env):
             pristine_dataset = df_tickers[0][1]
         self.FEATURES_SHAPE = calculate_observation(
             prepro_dataset[:model_in_observations],
-            pristine_dataset[:model_in_observations], None)[0]
-        self.FEATURES_SHAPE = {k: v.shape for k,
-                               v in self.FEATURES_SHAPE.items()}
+            pristine_dataset[:model_in_observations],
+            None,
+        )[0]
+        self.FEATURES_SHAPE = {k: v.shape for k, v in self.FEATURES_SHAPE.items()}
         print(f"obs length = {self.FEATURES_SHAPE}")
 
         # Update the observation space to include extra information
         self.observation_space = spaces.Dict(
-            {OBS_PRICES_SEQUENCE: spaces.Box(low=-1, high=1,
-                                             shape=self.FEATURES_SHAPE[OBS_PRICES_SEQUENCE],
-                                             dtype=np.float32),
-             OBS_OTHER: spaces.Box(low=-1, high=1,
-                                   shape=self.FEATURES_SHAPE[OBS_OTHER],
-                                   dtype=np.float32)})
+            {
+                OBS_PRICES_SEQUENCE: spaces.Box(
+                    low=-1,
+                    high=1,
+                    shape=self.FEATURES_SHAPE[OBS_PRICES_SEQUENCE],
+                    dtype=np.float32,
+                ),
+                OBS_OTHER: spaces.Box(
+                    low=-1,
+                    high=1,
+                    shape=self.FEATURES_SHAPE[OBS_OTHER],
+                    dtype=np.float32,
+                ),
+            }
+        )
 
         self.df_tickers = df_tickers
         self.episode_length = episode_length
@@ -61,13 +82,26 @@ class CustomEnv(gym.Env):
                 ticker_0 = ticker[0]
                 ticker_1 = ticker[1]
             for start_index in range(0, len(ticker_0), self.episode_length):
-                if (len(ticker_0.iloc[start_index:start_index + self.episode_length]) == self.episode_length
-                        and len(ticker_1.iloc[start_index:start_index + self.episode_length]) == self.episode_length):
-                    self.episodes.append((ticker_0.iloc[start_index:start_index + self.episode_length],
-                                          ticker_1.iloc[start_index:start_index +
-                                                        self.episode_length],
-                                          ticker[2],
-                                          ticker[3],))
+                if (
+                    len(ticker_0.iloc[start_index : start_index + self.episode_length])
+                    == self.episode_length
+                    and len(
+                        ticker_1.iloc[start_index : start_index + self.episode_length]
+                    )
+                    == self.episode_length
+                ):
+                    self.episodes.append(
+                        (
+                            ticker_0.iloc[
+                                start_index : start_index + self.episode_length
+                            ],
+                            ticker_1.iloc[
+                                start_index : start_index + self.episode_length
+                            ],
+                            ticker[2],
+                            ticker[3],
+                        )
+                    )
 
         self.episodes_max = episodes_max
 
@@ -84,30 +118,30 @@ class CustomEnv(gym.Env):
             trade_vector = 1  # Buying 1 unit
             self.holdings += trade_vector
             transaction_cost = self.commission * curr_close * trade_vector
-            self.cash_balance -= (curr_close * trade_vector + transaction_cost)
+            self.cash_balance -= curr_close * trade_vector + transaction_cost
             self.buy_price = curr_close
             self.operations_performed += 1
         elif action == 2 and self.buy_price is not None:  # Sell
             trade_vector = -1  # Selling 1 unit
             self.holdings += trade_vector
             transaction_cost = self.commission * curr_close * abs(trade_vector)
-            self.cash_balance += (curr_close *
-                                  abs(trade_vector) - transaction_cost)
+            self.cash_balance += curr_close * abs(trade_vector) - transaction_cost
             self.buy_price = None  # Reset buy_price upon sale
             self.operations_performed += 1
 
-        assert self.holdings <= 1
-
         # Calculate the reward using the formula provided
-        portfolio_value_t = self.cash_balance + \
-            np.dot(prev_close, self.holdings)
-        portfolio_value_t_plus_1 = self.cash_balance + \
-            np.dot(curr_close, self.holdings)
-        reward = (portfolio_value_t_plus_1 - portfolio_value_t -
-                  transaction_cost) / portfolio_value_t
+        portfolio_value_t = self.cash_balance + np.dot(prev_close, self.holdings)
+        portfolio_value_t_plus_1 = self.cash_balance + np.dot(curr_close, self.holdings)
+        reward = (
+            portfolio_value_t_plus_1 - portfolio_value_t - transaction_cost
+        ) / portfolio_value_t
 
-        if self.operations_performed < 2:
-            reward = -1.0
+        print(
+            f"portfolio_value_t_plus_1 {portfolio_value_t_plus_1}; portfolio_value_t {portfolio_value_t}; transaction_cost {transaction_cost}"
+        )
+
+        # if self.operations_performed < 2:
+        #     reward = -1.0
 
         reward = np.clip(reward, -1.0, 1.0)
 
@@ -116,8 +150,11 @@ class CustomEnv(gym.Env):
 
         # Check if the episode is terminated
         terminated = False
-        if (len(self.episodes[self.episode_idx][0]) < self.current_step + self.model_in_observations
-                or portfolio_value_t_plus_1 <= 0):
+        if (
+            len(self.episodes[self.episode_idx][0])
+            < self.current_step + self.model_in_observations
+            or portfolio_value_t_plus_1 <= 0
+        ):
             terminated = True
 
         # Return the step information
@@ -131,7 +168,7 @@ class CustomEnv(gym.Env):
             print(f"Initialized with seed {seed}")
 
             if self.episodes_max is not None:
-                self.episodes = self.episodes[:self.episodes_max]
+                self.episodes = self.episodes[: self.episodes_max]
                 print("Max episodes cut")
 
             assert len(self.episodes) > 0, "No episodes"
@@ -164,10 +201,13 @@ class CustomEnv(gym.Env):
     # @profile
     def calculate_observation(self):
         prepro_dataset = self.episodes[self.episode_idx][0][
-            self.current_step:self.current_step + self.model_in_observations]
+            self.current_step : self.current_step + self.model_in_observations
+        ]
         pristine_dataset = self.episodes[self.episode_idx][1][
-            self.current_step:self.current_step + self.model_in_observations]
+            self.current_step : self.current_step + self.model_in_observations
+        ]
         observation, curr_close, prev_close = calculate_observation(
-            prepro_dataset, pristine_dataset, self.buy_price)
+            prepro_dataset, pristine_dataset, self.buy_price
+        )
 
         return observation, curr_close, prev_close
