@@ -96,37 +96,37 @@ class LSTMExtractor(BaseFeaturesExtractor):
 
 
 class MLPExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space: spaces.Dict, hidden_sizes=None):
+    def __init__(self, observation_space: spaces.Dict, hidden_sizes=[32]):
         super().__init__(observation_space, features_dim=1)
 
-        if hidden_sizes is None:
-            hidden_sizes = [32]
+        # Handle OBS_PRICES_SEQUENCE using linear layers before and then LSTM
+        price_sequence = observation_space.spaces[OBS_PRICES_SEQUENCE]
 
-        extractors = {}
-        total_concat_size = 0
-        for key, subspace in observation_space.spaces.items():
-            in_channels = get_flattened_obs_dim(subspace)
-            layers = [nn.Flatten()]
-            for out_channels in hidden_sizes:
-                layers.append(nn.Linear(in_channels, out_channels))
-                layers.append(nn.ReLU())
-                in_channels = out_channels
+        # Handle OBS_OTHER using flattening
+        other_data = observation_space.spaces[OBS_OTHER]
 
-            extractors[key] = nn.Sequential(*layers)
+        in_channels = get_flattened_obs_dim(price_sequence) + get_flattened_obs_dim(
+            other_data
+        )
+        layers = []
+        for out_channels in hidden_sizes:
+            layers.append(nn.Linear(in_channels, out_channels))
+            layers.append(nn.ReLU())
+            in_channels = out_channels
 
-            total_concat_size += hidden_sizes[-1]
+        self.flatten = nn.Flatten()
+        self.linear_layers = nn.Sequential(*layers)
 
-        self.extractors = nn.ModuleDict(extractors)
-        self._features_dim = total_concat_size
+        self._features_dim = in_channels
 
-    def forward(self, observations: th.Tensor) -> th.Tensor:
-        encoded_tensor_list = []
+    def forward(self, observations) -> th.Tensor:
+        # Handle OBS_PRICES_SEQUENCE using linear layers before and then LSTM
+        price_sequence = self.flatten(observations[OBS_PRICES_SEQUENCE])
 
-        for key, extractor in self.extractors.items():
-            obs_data = observations[key]
-            encoded_tensor_list.append(extractor(obs_data))
+        # Handle OBS_OTHER using flattening
+        other_data = self.flatten(observations[OBS_OTHER])
 
-        return th.cat(encoded_tensor_list, dim=1)
+        return self.linear_layers(th.cat([price_sequence, other_data], dim=1))
 
 
 class SequenceCNNExtractor(BaseFeaturesExtractor):

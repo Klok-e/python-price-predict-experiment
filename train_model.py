@@ -87,7 +87,8 @@ def train_model(
         learn = rl_model.learn(
             total_timesteps=timesteps,
             # callback=[eval_callback],
-            callback=[checkpoint_callback, eval_callback],
+            # callback=[checkpoint_callback, eval_callback],
+            callback=[checkpoint_callback],
             tb_log_name=model_save_name,
         )
     finally:
