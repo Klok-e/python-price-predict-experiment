@@ -98,11 +98,8 @@ def train_model(
 
 
 def verify_custom_env(df):
-    try:
-        env = CustomEnv(df)
-        check_env(env)
-    finally:
-        env.unwrapped.close()
+    env = CustomEnv(df)
+    check_env(env)
 
 
 def unlink_tickers(df_tickers):
