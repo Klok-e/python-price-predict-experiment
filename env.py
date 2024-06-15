@@ -114,20 +114,26 @@ class CustomEnv(gym.Env):
         transaction_cost = 0
 
         # Define the actions
-        if action == 1 and self.buy_price is None:  # Buy
-            trade_vector = 1  # Buying 1 unit
+        if action == 1 and self.holdings == 0:  # Buy
+            trade_vector = (
+                0.3 * self.cash_balance / curr_close
+            )  # 30% of cash afforded units
+
             self.holdings += trade_vector
             transaction_cost = self.commission * curr_close * trade_vector
             self.cash_balance -= curr_close * trade_vector + transaction_cost
             self.buy_price = curr_close
             self.operations_performed += 1
-        elif action == 2 and self.buy_price is not None:  # Sell
-            trade_vector = -1  # Selling 1 unit
+        elif action == 2 and self.holdings > 0:  # Sell
+            trade_vector = -self.holdings  # Selling all units
+
             self.holdings += trade_vector
             transaction_cost = self.commission * curr_close * abs(trade_vector)
             self.cash_balance += curr_close * abs(trade_vector) - transaction_cost
             self.buy_price = None  # Reset buy_price upon sale
             self.operations_performed += 1
+
+        assert self.holdings >= 0
 
         # Calculate the reward using the formula provided
         portfolio_value_t = self.cash_balance + np.dot(prev_close, self.holdings)
@@ -136,9 +142,9 @@ class CustomEnv(gym.Env):
             portfolio_value_t_plus_1 - portfolio_value_t - transaction_cost
         ) / portfolio_value_t
 
-        print(
-            f"portfolio_value_t_plus_1 {portfolio_value_t_plus_1}; portfolio_value_t {portfolio_value_t}; transaction_cost {transaction_cost}"
-        )
+        # print(
+        #     f"portfolio_value_t_plus_1 {portfolio_value_t_plus_1}; portfolio_value_t {portfolio_value_t}; transaction_cost {transaction_cost}"
+        # )
 
         # if self.operations_performed < 2:
         #     reward = -1.0
