@@ -7,9 +7,13 @@ from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 
 from env import CustomEnv
 from model import LSTMExtractor, MLPExtractor
-from util import download_and_process_data_if_available, SharedPandasDataFrame
-
-count = 0
+from util import (
+    download_and_process_data_if_available,
+    SharedPandasDataFrame,
+    get_name_max_timesteps,
+)
+from model_load_backtest import run_backtest_on_all_tickers
+from backtest import create_backtest_model_with_data
 
 
 # @profile
@@ -23,6 +27,7 @@ def train_model(
     directory: str,
     model_save_name,
     policy_kwargs: dict,
+    continue_training=True,
 ):
     verify_custom_env(df_tickers_train)
 
@@ -84,6 +89,12 @@ def train_model(
             n_eval_episodes=5,
         )
 
+        checkpoints_dir = f"{directory}/rl-model/{model_save_name}/checkpoints/"
+        model_name = get_name_max_timesteps(checkpoints_dir)
+
+        if model_name is not None and continue_training:
+            rl_model.set_parameters(f"{checkpoints_dir}{model_name}")
+
         learn = rl_model.learn(
             total_timesteps=timesteps,
             # callback=[eval_callback],
@@ -96,6 +107,74 @@ def train_model(
         eval_env.unwrapped.close()
 
     return learn
+
+
+def model_eval_dead_relu(
+    df_tickers,
+    net_arch: list[int],
+    model_window_size: int,
+    directory: str,
+    model_save_name,
+    policy_kwargs: dict,
+    time_delta_days: int,
+):
+    verify_custom_env(df_tickers)
+
+    env = make_vec_env(
+        CustomEnv,
+        env_kwargs={
+            "df_tickers": df_tickers,
+            "model_in_observations": model_window_size,
+        },
+        seed=42,
+        vec_env_cls=DummyVecEnv,
+    )
+
+    policy_kvargs = dict(
+        activation_fn=torch.nn.LeakyReLU, net_arch=net_arch, **policy_kwargs
+    )
+
+    policy_kvargs["features_extractor_kwargs"] = dict(
+        save_activations=True, **policy_kvargs["features_extractor_kwargs"]
+    )
+
+    # {'gamma': 0.8, 'ent_coef': 0.02, 'gae_lambda': 0.92}
+    rl_model = PPO(
+        "MultiInputPolicy",
+        env,
+        verbose=1,
+        tensorboard_log=f"{directory}/tensorboard/",
+        ent_coef=0.02,
+        gae_lambda=0.92,
+        gamma=0.9,
+        policy_kwargs=policy_kvargs,
+        batch_size=1024,
+        seed=42,
+    )
+
+    checkpoints_dir = f"{directory}/rl-model/{model_save_name}/checkpoints/"
+    model_name = get_name_max_timesteps(checkpoints_dir)
+
+    model_path = f"{checkpoints_dir}{model_name}"
+    print(f"loading model from {model_path}")
+
+    rl_model.set_parameters(model_path)
+
+    run_backtest_on_all_tickers(
+        df_tickers,
+        f"Model {dir}",
+        model_window_size,
+        lambda df, scaler, model_in_observations, start, end: create_backtest_model_with_data(
+            rl_model, df, scaler, start, end, model_in_observations
+        ),
+        time_delta_days=time_delta_days,
+    )
+
+    perc = rl_model.policy.features_extractor.calculate_dead_relu_percentages()
+    for key, value in perc.items():
+        print(f"dead relu: {key} : {value}")
+
+    return rl_model
 
 
 def verify_custom_env(df):

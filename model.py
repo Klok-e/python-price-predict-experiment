@@ -5,6 +5,7 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from torch import nn
 import torch as th
 from typing import Dict
+from collections import defaultdict
 
 from util import OBS_PRICES_SEQUENCE, OBS_OTHER
 
@@ -34,8 +35,11 @@ class LSTMExtractor(BaseFeaturesExtractor):
         lstm_layers=1,
         linear_arch=[64, 64, 64],
         linear_arch_after=[64, 64],
+        save_activations=False,
     ):
         super().__init__(observation_space, features_dim=1)
+
+        self.activations = defaultdict(list)
 
         # Extract features dimension from the observation spaces
         seq_len, n_features = observation_space.spaces[OBS_PRICES_SEQUENCE].shape
@@ -44,10 +48,16 @@ class LSTMExtractor(BaseFeaturesExtractor):
         # Linear layers before LSTM
         linear_layers_before = []
         current_input_size = n_features
-        for hidden_size in linear_arch:
+        for i, hidden_size in enumerate(linear_arch):
             linear_layers_before.append(nn.Linear(current_input_size, hidden_size))
-            linear_layers_before.append(nn.ReLU())
+            relu_layer = nn.ReLU()
+            linear_layers_before.append(relu_layer)
             current_input_size = hidden_size
+
+            if save_activations:
+                relu_layer.register_forward_hook(
+                    self.save_activation_hook(f"before_lstm_relu_{i}")
+                )
 
         self.linear_layers_before = nn.Sequential(*linear_layers_before)
 
@@ -59,25 +69,60 @@ class LSTMExtractor(BaseFeaturesExtractor):
 
         linear_layers_after = []
         current_input_size = combined_input_size
-        for hidden_size in linear_arch_after:
+        for i, hidden_size in enumerate(linear_arch_after):
             linear_layers_after.append(nn.Linear(current_input_size, hidden_size))
-            linear_layers_after.append(nn.ReLU())
+            relu_layer = nn.ReLU()
+            linear_layers_after.append(relu_layer)
             current_input_size = hidden_size
+
+            if save_activations:
+                relu_layer.register_forward_hook(
+                    self.save_activation_hook(f"after_lstm_relu_{i}")
+                )
 
         self.linear_layers_after = nn.Sequential(*linear_layers_after)
 
         # Update the features dimension
         self._features_dim = current_input_size
 
+    def save_activation_hook(self, layer_name):
+        def hook(model, input, output):
+            self.activations[layer_name].append(output.detach().clone())
+
+        return hook
+
+    def reset_activations(self):
+        self.activations = defaultdict(list)
+
+    def calculate_dead_relu_percentages(self):
+        percentages = {}
+        for layer_name, activations_list in self.activations.items():
+            # Concatenate activations across batches
+            all_activations = th.cat(activations_list, dim=0)
+
+            # Sum activations across dimension
+            sum_activations = all_activations.sum(dim=0)
+
+            # Count the number of dead ReLUs
+            dead_relus = (sum_activations == 0).sum().item()
+            total_elements = sum_activations.numel()
+
+            percentages[layer_name] = (
+                (dead_relus / total_elements) * 100 if total_elements > 0 else 0.0
+            )
+        return percentages
+
     def forward(self, observations: Dict[str, th.Tensor]) -> th.Tensor:
         # Handle OBS_PRICES_SEQUENCE using linear layers before and then LSTM
         price_sequence = observations[OBS_PRICES_SEQUENCE]
         batch_size, seq_len, n_features = price_sequence.shape
+
         # Flatten input to (batch*seq_len, n_features)
         price_sequence = price_sequence.view(-1, n_features)
         price_sequence = self.linear_layers_before(
             price_sequence
         )  # Apply linear layers before LSTM
+
         # Reshape back to (batch, seq_len, last_layer_size)
         price_sequence = price_sequence.view(batch_size, seq_len, -1)
         lstm_output = self.lstm(price_sequence)

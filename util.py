@@ -2,6 +2,7 @@ import datetime
 import os
 import pickle
 from multiprocessing.shared_memory import SharedMemory
+import re
 
 import numpy as np
 import pandas as pd
@@ -86,19 +87,19 @@ def __full_handle_tickers(df_tickers):
 
 
 def split_tickers_train_test(df_tickers, last_days):
+    last_date = df_tickers[0][0].index.max() - pd.Timedelta(days=last_days)
+
     df_tickers_train = list(
         map(
             lambda ticker: (
-                SharedPandasDataFrame(ticker[0]),
-                SharedPandasDataFrame(ticker[1]),
+                SharedPandasDataFrame(ticker[0].loc[:last_date]),
+                SharedPandasDataFrame(ticker[1].loc[:last_date]),
                 ticker[2],
                 ticker[3],
             ),
             df_tickers,
         )
     )
-
-    last_date = df_tickers[0][0].index.max() - pd.Timedelta(days=last_days)
     df_tickers_test = list(
         map(
             lambda ticker: (
@@ -352,6 +353,61 @@ def create_synthetic_price_data():
     df_tickers = generate_synthetic_data(tickers, start_date, end_date)
     df_tickers_processed = __full_handle_tickers(df_tickers)
     return df_tickers_processed
+
+
+def create_random_walk_price_data():
+    import numpy as np
+    import pandas as pd
+    from datetime import datetime, timedelta
+
+    def generate_random_walk_data(
+        tickers, start_date, end_date, initial_price=100, freq="1T", volatility=0.02
+    ):
+        data = []
+        date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
+        num_periods = len(date_range)
+
+        for ticker in tickers:
+            prices = [initial_price]
+            for _ in range(1, num_periods):
+                change_percent = np.random.uniform(-volatility, volatility)
+                new_price = prices[-1] * (1 + change_percent)
+                prices.append(new_price)
+
+            volumes = np.random.randint(100, 10000, size=num_periods)
+
+            df = pd.DataFrame(
+                {
+                    "Open time": date_range,
+                    "Open": prices,
+                    "High": prices,
+                    "Low": prices,
+                    "Close": prices,
+                    "Volume": volumes,
+                }
+            )
+            data.append((df, ticker))
+        return data
+
+    print("Creating random walk price data")
+    tickers = ["RANDOM1USDT"]
+    start_date = datetime.now() - timedelta(days=365)
+    end_date = datetime.now()
+
+    df_tickers = generate_random_walk_data(tickers, start_date, end_date)
+    df_tickers_processed = __full_handle_tickers(df_tickers)
+    return df_tickers_processed
+
+
+def get_name_max_timesteps(models_dir):
+    files = next(os.walk(models_dir), (None, None, []))[2]
+    if len(files) == 0:
+        return None
+
+    return max(
+        files,
+        key=lambda x: int(re.match(".*?(\\d+)_steps\\.zip", x).group(1)),
+    )
 
 
 class SharedPandasDataFrame:

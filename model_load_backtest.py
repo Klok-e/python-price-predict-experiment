@@ -6,13 +6,18 @@ import pandas as pd
 
 
 def run_backtest_on_all_tickers(
-    df_tickers, strat_name, in_obs, create_strategy_func, computed_data_dir
+    df_tickers,
+    strat_name,
+    in_obs,
+    create_strategy_func,
+    computed_data_dir=None,
+    time_delta_days=32,
 ):
     sum_equity = None
     trades = 0
     for _, df, scaler, name in df_tickers:
         df = df.read()
-        start = df.index.max() - pd.Timedelta(days=32)
+        start = df.index.max() - pd.Timedelta(days=time_delta_days)
         end = df.index.max()
 
         t = time.time()
@@ -22,10 +27,11 @@ def run_backtest_on_all_tickers(
         bt = create_strategy_func(df, scaler, in_obs, start, end)
         res = bt.run()
 
-        save_pickle(
-            (res._trades, res._equity_curve),
-            f"{computed_data_dir}/backtest-results/{strat_name}_{name}.pkl",
-        )
+        if computed_data_dir is not None:
+            save_pickle(
+                (res._trades, res._equity_curve),
+                f"{computed_data_dir}/backtest-results/{strat_name}_{name}.pkl",
+            )
 
         trades += len(res._trades)
 
@@ -38,6 +44,10 @@ def run_backtest_on_all_tickers(
         print(f"backtest for {name} finished; time taken: {time.time() - t}")
     start_cash = 1_000_000
 
+    return strat_name, sum_equity, trades, start_cash
+
+
+def print_metrics(strat_name, sum_equity, trades, start_cash):
     metrics = calculate_metrics(sum_equity, trades, start_cash)
     print()
     print(f"{strat_name} metrics:")
