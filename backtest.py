@@ -9,8 +9,6 @@ from util import calculate_observation, preprocess_add_features, preprocess_scal
 class BuyAndHold(Strategy):
     def __init__(self, broker, data, params):
         super().__init__(broker, data, params)
-        self.buy_price = None
-        self.expected_gain = None
 
     def init(self):
         self.buy()
@@ -45,7 +43,6 @@ def create_backtest_model_with_data(
         def __init__(self, broker, data, params):
             super().__init__(broker, data, params)
             self.buy_price = None
-            self.expected_gain = None
 
         def init(self):
             pass
@@ -69,20 +66,12 @@ def create_backtest_model_with_data(
                 )
 
                 action, _ = rl_model.predict(observation, deterministic=True)
-                if self.buy_price is None:
-                    if action == 1:
-                        self.buy()
-                        self.buy_price = curr_close
-                        # print(f"bought at {self.buy_price}")
-                else:
-                    if action == 2:
-                        # commission = 0.001
-                        # sell_fee = curr_close * (1 - commission)
-                        # buy_fee = self.buy_price * (1 + commission)
-                        # gain_from_trade_fee = (sell_fee - buy_fee) / buy_fee
-                        self.position.close()
-                        self.buy_price = None
-                        # print(f"sold at {curr_close}; equity {self.equity}")
+                if action == 1 and self.buy_price is None:
+                    self.buy()
+                    self.buy_price = curr_close
+                elif action == 2 and self.buy_price is not None:
+                    self.position.close()
+                    self.buy_price = None
 
     backtest_dataset = preprocess_add_features(data.loc[start:end])
     # backtest_prepro_dataset, scaler = preprocess_scale(data.loc[start:end], scaler)

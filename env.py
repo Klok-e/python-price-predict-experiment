@@ -114,7 +114,7 @@ class CustomEnv(gym.Env):
         transaction_cost = 0
 
         # Define the actions
-        if action == 1 and self.holdings == 0:  # Buy
+        if action == 1 and self.buy_price is None:  # Buy
             trade_vector = (
                 0.3 * self.cash_balance / curr_close
             )  # 30% of cash afforded units
@@ -124,7 +124,7 @@ class CustomEnv(gym.Env):
             self.cash_balance -= curr_close * trade_vector + transaction_cost
             self.buy_price = curr_close
             self.operations_performed += 1
-        elif action == 2 and self.holdings > 0:  # Sell
+        elif action == 2 and self.buy_price is not None:  # Sell
             trade_vector = -self.holdings  # Selling all units
 
             self.holdings += trade_vector
