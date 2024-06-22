@@ -11,7 +11,7 @@ def run_backtest_on_all_tickers(
     in_obs,
     create_strategy_func,
     computed_data_dir=None,
-    time_delta_days=32,
+    time_delta_days=7,
 ):
     sum_equity = None
     trades = 0
