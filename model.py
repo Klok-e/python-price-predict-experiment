@@ -35,6 +35,7 @@ class LSTMExtractor(BaseFeaturesExtractor):
         lstm_layers=1,
         linear_arch=[64, 64, 64],
         linear_arch_after=[64, 64],
+        activation_fn=nn.ReLU,
         save_activations=False,
     ):
         super().__init__(observation_space, features_dim=1)
@@ -50,7 +51,7 @@ class LSTMExtractor(BaseFeaturesExtractor):
         current_input_size = n_features
         for i, hidden_size in enumerate(linear_arch):
             linear_layers_before.append(nn.Linear(current_input_size, hidden_size))
-            relu_layer = nn.ReLU()
+            relu_layer = activation_fn()
             linear_layers_before.append(relu_layer)
             current_input_size = hidden_size
 
@@ -71,7 +72,7 @@ class LSTMExtractor(BaseFeaturesExtractor):
         current_input_size = combined_input_size
         for i, hidden_size in enumerate(linear_arch_after):
             linear_layers_after.append(nn.Linear(current_input_size, hidden_size))
-            relu_layer = nn.ReLU()
+            relu_layer = activation_fn()
             linear_layers_after.append(relu_layer)
             current_input_size = hidden_size
 

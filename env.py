@@ -115,9 +115,8 @@ class CustomEnv(gym.Env):
 
         # Define the actions
         if action == 1 and self.buy_price is None:  # Buy
-            trade_vector = (
-                0.3 * self.cash_balance / curr_close
-            )  # 30% of cash afforded units
+            # use all available cash
+            trade_vector = self.cash_balance / curr_close
 
             self.holdings += trade_vector
             transaction_cost = self.commission * curr_close * trade_vector
@@ -143,7 +142,10 @@ class CustomEnv(gym.Env):
         ) / portfolio_value_t
 
         # print(
-        #     f"portfolio_value_t_plus_1 {portfolio_value_t_plus_1}; portfolio_value_t {portfolio_value_t}; transaction_cost {transaction_cost}"
+        #     f"portfolio_value_t_plus_1 {portfolio_value_t_plus_1};"
+        #     + f" portfolio_value_t {portfolio_value_t};"
+        #     + f" transaction_cost {transaction_cost};"
+        #     + f" reward {reward};"
         # )
 
         # if self.operations_performed < 2:

@@ -36,6 +36,7 @@ def create_backtest_model_with_data(
     start: str,
     end: str,
     model_in_observations: int,
+    print_actions=False,
 ):
     skip_steps = 1024 + model_in_observations
 
@@ -69,8 +70,23 @@ def create_backtest_model_with_data(
                 if action == 1 and self.buy_price is None:
                     self.buy()
                     self.buy_price = curr_close
+                    if print_actions:
+                        print(f"[{df.index.values[-1]}] bought at {self.buy_price}")
                 elif action == 2 and self.buy_price is not None:
                     self.position.close()
+
+                    if print_actions:
+                        commission = 0.001
+                        sell_fee = curr_close * (1 - commission)
+                        buy_fee = self.buy_price * (1 + commission)
+                        gain_from_trade_fee = (sell_fee - buy_fee) / buy_fee
+                        print(
+                            f"[{df.index.values[-1]}]"
+                            + f" sold at {curr_close};"
+                            + f" gain {gain_from_trade_fee};"
+                            + f" equity {self.equity}"
+                        )
+
                     self.buy_price = None
 
     backtest_dataset = preprocess_add_features(data.loc[start:end])
