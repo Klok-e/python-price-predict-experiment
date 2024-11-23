@@ -77,7 +77,7 @@ def create_backtest_model_with_data(
                     self.buy_price = curr_close
                     if print_actions:
                         print(f"[{df.index.values[-1]}] bought at {self.buy_price}")
-                elif self.buy_price is not None and self.current_order.parent_trade.exit_time is not None:
+                if self.buy_price is not None and self.current_order.parent_trade.exit_time is not None:
                     if print_actions:
                         commission = 0.001
                         sell_fee = curr_close * (1 - commission)

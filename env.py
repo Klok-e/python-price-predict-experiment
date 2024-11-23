@@ -138,7 +138,7 @@ class CustomEnv(gym.Env):
             #       f"curr price {curr_close}; "
             #       f"sl {stop_loss_price(curr_close, self.tp_percent)}; "
             #       f"tp {take_profit_price(curr_close, self.tp_percent)}")
-        elif self.buy_price is not None and self.future_sell_step == self.current_step:  # Sell
+        if self.buy_price is not None and self.future_sell_step == self.current_step:  # Sell
             trade_vector = -self.holdings  # Selling all units
 
             self.holdings += trade_vector
