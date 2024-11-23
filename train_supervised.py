@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -5,36 +7,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 
-
-class PricePredictorModel(nn.Module):
-    def __init__(self, window_size, feature_size, linear_arch=None):
-        super(PricePredictorModel, self).__init__()
-
-        if linear_arch is None:
-            linear_arch = [64, 64]
-
-        input_size = window_size * feature_size
-
-        # Linear layers for the feedforward network
-        self.linear_layers = nn.Sequential(
-            *[nn.Sequential(nn.Linear(in_f, out_f), nn.SiLU())
-              for in_f, out_f in zip([input_size] + linear_arch[:-1], linear_arch)]
-        )
-
-        # Output layer to produce a single output
-        self.output_layer = nn.Linear(linear_arch[-1], 1)
-        # Sigmoid activation for the final output
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, x):
-        # Flatten the input
-        x = x.view(x.size(0), -1)
-        # Pass through the linear layers
-        x = self.linear_layers(x)
-        # Pass through the output layer
-        x = self.output_layer(x)
-        # Apply sigmoid activation
-        return self.sigmoid(x)
+from utils.util import create_dir_if_not_exists
 
 
 class PriceDataset(Dataset):
@@ -58,7 +31,8 @@ class PriceDataset(Dataset):
             cumulative_length += num_samples
 
 
-def train_supervised_model(df_tickers_train, df_tickers_test, window_size, tensorboard_log_dir, epochs=10,
+def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_tickers_test, window_size,
+                           computed_data_dir, epochs=10,
                            batch_size=4096, learning_rate=0.001, log_interval=100):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -72,11 +46,11 @@ def train_supervised_model(df_tickers_train, df_tickers_test, window_size, tenso
     test_dataset = PriceDataset(df_tickers_test, window_size)
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, drop_last=True)
 
-    writer = SummaryWriter(tensorboard_log_dir)
+    log_dir = f"{computed_data_dir}/tensorboard/"
+    create_dir_if_not_exists(log_dir)
+    writer = SummaryWriter(f"{log_dir}run{len(os.listdir(log_dir))}")
 
-    model = (PricePredictorModel(feature_size=feature_size,
-                                 window_size=window_size,
-                                 linear_arch=[512, 512, 512]).to(device))
+    model = model_type(feature_size=feature_size, window_size=window_size, **model_kwargs).to(device)
     criterion = nn.BCELoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -120,7 +94,14 @@ def train_supervised_model(df_tickers_train, df_tickers_test, window_size, tenso
                                   epoch * len(train_dataloader) + batch_idx)
                 writer.add_scalar("Accuracy/test", test_accuracy,
                                   epoch * len(train_dataloader) + batch_idx)
+
+                model_save_path = f"{computed_data_dir}/supervised_model/epoch_{epoch}_batch_{batch_idx}_test_accuracy_{test_accuracy}.pth"
+                create_dir_if_not_exists(model_save_path)
+                torch.save(model.state_dict(), model_save_path)
+
                 model.train()
+
+        print(f"epoch {epoch} ended")
 
     writer.close()
 

@@ -16,7 +16,7 @@ OBS_PRICES_SEQUENCE = "prices_sequence"
 
 TICKERS = ["NEARUSDT", "SOLUSDT", "BTCUSDT", "ETHUSDT", "BNBUSDT"]
 
-BINANCE_DATA_START_DATE = datetime.date(2024, 9, 1)
+BINANCE_DATA_START_DATE = datetime.date(2020, 1, 1)
 
 
 class MultiScaler:
@@ -205,6 +205,7 @@ def preprocess_add_features(df):
     df.dropna(inplace=True)
     return df
 
+
 def test_preprocess_invert_preprocess(original_df):
     from sklearn.metrics import mean_absolute_error
 
@@ -297,13 +298,17 @@ def __get_df_for_ticker(data_dir, ticker):
 
 
 def save_pickle(data, filename):
-    dirname = os.path.dirname(filename)
-    if not os.path.exists(dirname):
-        os.makedirs(dirname)
+    create_dir_if_not_exists(filename)
 
     # Save the processed data to disk
     with open(filename, "wb") as file:
         pickle.dump(data, file)
+
+
+def create_dir_if_not_exists(filename):
+    dirname = os.path.dirname(filename)
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
 
 
 def load_pickle(filename):
