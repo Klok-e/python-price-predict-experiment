@@ -244,7 +244,7 @@ def __download_data(data_dir):
         path_dir_where_to_dump=f"{data_dir}/",
         asset_class="spot",  # spot, um, cm
         data_type="klines",  # aggTrades, klines, trades
-        data_frequency="1h",
+        data_frequency="1m",
     )
 
     print(data_dumper.get_list_all_trading_pairs())
