@@ -3,7 +3,7 @@ from backtesting import Backtest, Strategy
 from line_profiler import profile
 from sklearn.preprocessing import MinMaxScaler
 
-from util import calculate_observation, preprocess_add_features, preprocess_scale
+from util import calculate_observation, preprocess_add_features, preprocess_scale, stop_loss_price, take_profit_price
 
 
 class BuyAndHold(Strategy):
@@ -43,6 +43,7 @@ def create_backtest_model_with_data(
     class NeuralNetStrat(Strategy):
         def __init__(self, broker, data, params):
             super().__init__(broker, data, params)
+            self.current_order = None
             self.buy_price = None
 
         def init(self):
@@ -68,13 +69,15 @@ def create_backtest_model_with_data(
 
                 action, _ = rl_model.predict(observation, deterministic=True)
                 if action == 1 and self.buy_price is None:
-                    self.buy()
+                    self.current_order = self.buy(
+                        sl=stop_loss_price(curr_close, 0.4),
+                        tp=take_profit_price(curr_close, 0.4)
+                    )
+
                     self.buy_price = curr_close
                     if print_actions:
                         print(f"[{df.index.values[-1]}] bought at {self.buy_price}")
-                elif action == 2 and self.buy_price is not None:
-                    self.position.close()
-
+                elif self.buy_price is not None and self.current_order.parent_trade.exit_time is not None:
                     if print_actions:
                         commission = 0.001
                         sell_fee = curr_close * (1 - commission)

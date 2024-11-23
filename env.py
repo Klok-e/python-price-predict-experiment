@@ -8,7 +8,7 @@ from util import (
     calculate_observation,
     OBS_PRICES_SEQUENCE,
     OBS_OTHER,
-    SharedPandasDataFrame,
+    SharedPandasDataFrame, take_profit_price, stop_loss_price,
 )
 
 
@@ -20,15 +20,19 @@ class CustomEnv(gym.Env):
         episodes_max=None,
         commission=0.001,
         model_in_observations=64,
+        sl_percent=0.4,
+        tp_percent=0.4,
     ):
         super().__init__()
 
+        self.tp_percent = tp_percent
+        self.sl_percent = sl_percent
         self.random_gen = None
 
         self.commission = commission
 
-        # 0: hold; 1: buy; 2: sell
-        self.action_space = spaces.Discrete(3)
+        # 0: hold; 1: buy
+        self.action_space = spaces.Discrete(2)
 
         try:
             prepro_dataset = df_tickers[0][0].read()
@@ -67,7 +71,7 @@ class CustomEnv(gym.Env):
         self.buy_price = None
         self.holdings = 0
         self.cash_balance = 10000
-        self.operations_performed = 0
+        self.future_sell_step = 0
 
         self.model_in_observations = model_in_observations
 
@@ -113,6 +117,8 @@ class CustomEnv(gym.Env):
         # Initialize reward and transaction cost
         transaction_cost = 0
 
+        reward = 0
+
         # Define the actions
         if action == 1 and self.buy_price is None:  # Buy
             # use all available cash
@@ -122,24 +128,34 @@ class CustomEnv(gym.Env):
             transaction_cost = self.commission * curr_close * trade_vector
             self.cash_balance -= curr_close * trade_vector + transaction_cost
             self.buy_price = curr_close
-            self.operations_performed += 1
-        elif action == 2 and self.buy_price is not None:  # Sell
+
+            reward, self.future_sell_step = self.calculate_reward(
+                stop_loss_price(curr_close, self.tp_percent),
+                take_profit_price(curr_close, self.tp_percent)
+            )
+
+            # print(f"buy at step {self.current_step}; "
+            #       f"curr price {curr_close}; "
+            #       f"sl {stop_loss_price(curr_close, self.tp_percent)}; "
+            #       f"tp {take_profit_price(curr_close, self.tp_percent)}")
+        elif self.buy_price is not None and self.future_sell_step == self.current_step:  # Sell
             trade_vector = -self.holdings  # Selling all units
 
             self.holdings += trade_vector
             transaction_cost = self.commission * curr_close * abs(trade_vector)
             self.cash_balance += curr_close * abs(trade_vector) - transaction_cost
             self.buy_price = None  # Reset buy_price upon sale
-            self.operations_performed += 1
+
+            # print(f"sale at step {self.current_step}; curr price {curr_close}")
 
         assert self.holdings >= 0
 
         # Calculate the reward using the formula provided
         portfolio_value_t = self.cash_balance + np.dot(prev_close, self.holdings)
         portfolio_value_t_plus_1 = self.cash_balance + np.dot(curr_close, self.holdings)
-        reward = (
-            portfolio_value_t_plus_1 - portfolio_value_t - transaction_cost
-        ) / portfolio_value_t
+        # reward = (
+        #     portfolio_value_t_plus_1 - portfolio_value_t - transaction_cost
+        # ) / portfolio_value_t
 
         # print(
         #     f"portfolio_value_t_plus_1 {portfolio_value_t_plus_1};"
@@ -147,9 +163,6 @@ class CustomEnv(gym.Env):
         #     + f" transaction_cost {transaction_cost};"
         #     + f" reward {reward};"
         # )
-
-        # if self.operations_performed < 2:
-        #     reward = -1.0
 
         reward = np.clip(reward, -1.0, 1.0)
 
@@ -192,7 +205,7 @@ class CustomEnv(gym.Env):
         self.buy_price = None
         self.holdings = 0
         self.cash_balance = 10000
-        self.operations_performed = 0
+        self.future_sell_step = 0
 
         # print(f"episode {self.episode_idx}; ticker {self.episodes[self.episode_idx][3]}")
 
@@ -219,3 +232,27 @@ class CustomEnv(gym.Env):
         )
 
         return observation, curr_close, prev_close
+
+    # @profile
+    def calculate_reward(self, sl, tp):
+        # Convert the pristine_dataset to a NumPy array if it's not already
+        pristine_dataset = self.episodes[self.episode_idx][1][self.current_step + self.model_in_observations:]
+
+        # Find indices where the condition is met
+        sl_indices = np.where(pristine_dataset <= sl)[0]
+        tp_indices = np.where(pristine_dataset >= tp)[0]
+
+        # Initialize timestep as None
+        timestep = None
+
+        # Determine the first occurrence of either condition
+        if sl_indices.size > 0 and (tp_indices.size == 0 or sl_indices[0] < tp_indices[0]):
+            reward = -1  # Stop-loss hit first
+            timestep = sl_indices[0] + self.current_step + self.model_in_observations
+        elif tp_indices.size > 0:
+            reward = 1  # Take-profit hit first
+            timestep = tp_indices[0] + self.current_step + self.model_in_observations
+        else:
+            reward = 0  # Neither condition was met
+
+        return reward, timestep

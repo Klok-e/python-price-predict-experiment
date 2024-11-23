@@ -494,3 +494,9 @@ class SharedNumpyArray:
         """
         self._shared.close()
         self._shared.unlink()
+
+def stop_loss_price(price, percent):
+    return price * (100 - percent) / 100
+
+def take_profit_price(price, percent):
+    return price * (100 + percent) / 100
