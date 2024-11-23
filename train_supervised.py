@@ -101,6 +101,8 @@ def train_supervised_model(df_tickers_train, df_tickers_test, window_size, tenso
                 # Evaluate on test data
                 model.eval()
                 total_test_loss = 0
+                correct_predictions = 0
+                total_samples = 0
                 with torch.no_grad():
                     for inputs, labels in test_dataloader:
                         inputs, labels = inputs.to(device), labels.to(device)
@@ -108,7 +110,15 @@ def train_supervised_model(df_tickers_train, df_tickers_test, window_size, tenso
                         loss = criterion(outputs, labels)
                         total_test_loss += loss.item()
 
+                        # Calculate accuracy
+                        predictions = (outputs > 0.5).float()
+                        correct_predictions += (predictions == labels).sum().item()
+                        total_samples += labels.size(0)
+
+                test_accuracy = correct_predictions / total_samples
                 writer.add_scalar("Loss/test", total_test_loss / len(test_dataloader),
+                                  epoch * len(train_dataloader) + batch_idx)
+                writer.add_scalar("Accuracy/test", test_accuracy,
                                   epoch * len(train_dataloader) + batch_idx)
                 model.train()
 
