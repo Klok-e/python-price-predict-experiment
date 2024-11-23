@@ -16,7 +16,7 @@ OBS_PRICES_SEQUENCE = "prices_sequence"
 
 TICKERS = ["NEARUSDT", "SOLUSDT", "BTCUSDT", "ETHUSDT", "BNBUSDT"]
 
-BINANCE_DATA_START_DATE = datetime.date(2021, 1, 1)
+BINANCE_DATA_START_DATE = datetime.date(2024, 9, 1)
 
 
 class MultiScaler:

@@ -1,5 +1,3 @@
-from pyexpat import features
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -60,35 +58,59 @@ class PriceDataset(Dataset):
             cumulative_length += num_samples
 
 
-def train_supervised_model(df_tickers, window_size, tensorboard_log_dir, epochs=10, batch_size=4096, learning_rate=0.001):
+def train_supervised_model(df_tickers_train, df_tickers_test, window_size, tensorboard_log_dir, epochs=10,
+                           batch_size=4096, learning_rate=0.001, log_interval=100):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    first_dataset = df_tickers[0][0]
+    first_dataset = df_tickers_train[0][0]
     feature_size = first_dataset.shape[1]
 
-    dataset = PriceDataset(df_tickers, window_size)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+    # Create datasets and dataloaders
+    train_dataset = PriceDataset(df_tickers_train, window_size)
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+
+    test_dataset = PriceDataset(df_tickers_test, window_size)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, drop_last=True)
 
     writer = SummaryWriter(tensorboard_log_dir)
 
-    model = PricePredictorModel(feature_size=feature_size, window_size=window_size, linear_arch=[512, 512, 512]).to(device)
+    model = (PricePredictorModel(feature_size=feature_size,
+                                 window_size=window_size,
+                                 linear_arch=[512, 512, 512]).to(device))
     criterion = nn.BCELoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     for epoch in range(epochs):
-        total_loss = 0
-        for inputs, labels in dataloader:
+        model.train()
+        total_train_loss = 0
+        for batch_idx, (inputs, labels) in enumerate(train_dataloader):
             inputs, labels = inputs.to(device), labels.to(device)
 
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
 
-            total_loss += loss.item()
-            writer.add_scalar("Loss/train", loss, epoch)
-
+            total_train_loss += loss.item()
             loss.backward()
             optimizer.step()
+
+            if batch_idx % log_interval == 0:
+                writer.add_scalar("Loss/train", total_train_loss / (batch_idx + 1),
+                                  epoch * len(train_dataloader) + batch_idx)
+
+                # Evaluate on test data
+                model.eval()
+                total_test_loss = 0
+                with torch.no_grad():
+                    for inputs, labels in test_dataloader:
+                        inputs, labels = inputs.to(device), labels.to(device)
+                        outputs = model(inputs)
+                        loss = criterion(outputs, labels)
+                        total_test_loss += loss.item()
+
+                writer.add_scalar("Loss/test", total_test_loss / len(test_dataloader),
+                                  epoch * len(train_dataloader) + batch_idx)
+                model.train()
 
     writer.close()
 
