@@ -3,7 +3,7 @@ from backtesting import Backtest, Strategy
 from line_profiler import profile
 from sklearn.preprocessing import MinMaxScaler
 
-from util import calculate_observation, preprocess_add_features, preprocess_scale, stop_loss_price, take_profit_price
+from utils.util import calculate_observation, preprocess_add_features, preprocess_scale, stop_loss_price, take_profit_price
 
 
 class BuyAndHold(Strategy):

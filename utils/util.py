@@ -1,7 +1,6 @@
 import datetime
 import os
 import pickle
-from multiprocessing.shared_memory import SharedMemory
 import re
 
 import numpy as np
@@ -62,7 +61,7 @@ def full_preprocess(df: pd.DataFrame, scaler=None):
     return df_preprocessed, scaler
 
 
-def __full_handle_tickers(df_tickers):
+def __full_handle_tickers(df_tickers, sl=0.4, tp=0.4):
     datasets = []
 
     for df_ticker, _ in df_tickers:
@@ -74,16 +73,47 @@ def __full_handle_tickers(df_tickers):
         datasets.append(dataset_with_features)
 
     combined_dataset = pd.concat(datasets)
-
-    combined_preprocessed, combined_scaler = preprocess_scale(combined_dataset)
+    _, combined_scaler = preprocess_scale(combined_dataset)
 
     results = []
 
     for i, dataset in enumerate(datasets):
         df_scaled, _ = preprocess_scale(dataset, combined_scaler)
-        results.append((df_scaled, dataset.iloc[1:], combined_scaler, df_tickers[i][1]))
+        dataset = dataset.iloc[1:]
+
+        labels = generate_labels_for_supervised(dataset, sl, tp)
+
+        results.append((df_scaled, dataset, labels, combined_scaler, df_tickers[i][1]))
 
     return results
+
+
+def generate_labels_for_supervised(pristine, sl, tp):
+    ticker_labels = []
+
+    # Iterate over each row in the pristine DataFrame
+    for i in range(len(pristine)):
+        current_price = pristine.iloc[i].Close
+
+        # Calculate stop loss and take profit prices
+        sl_price = stop_loss_price(current_price, sl)
+        tp_price = take_profit_price(current_price, tp)
+
+        # Initialize label as 0 (stop loss not triggered)
+        label = 0
+
+        # Check future prices to determine if stop loss or take profit is triggered
+        for future_price in pristine.iloc[i + 1:]['Close']:
+            if future_price <= sl_price:
+                label = 0
+                break
+            elif future_price >= tp_price:
+                label = 1
+                break
+
+        ticker_labels.append(label)
+
+    return pd.DataFrame(ticker_labels, index=pristine.index, columns=['Label'])
 
 
 def split_tickers_train_test(df_tickers, last_days):
@@ -92,10 +122,11 @@ def split_tickers_train_test(df_tickers, last_days):
     df_tickers_train = list(
         map(
             lambda ticker: (
-                SharedPandasDataFrame(ticker[0].loc[:last_date]),
-                SharedPandasDataFrame(ticker[1].loc[:last_date]),
-                ticker[2],
+                ticker[0].loc[:last_date],
+                ticker[1].loc[:last_date],
+                ticker[2].loc[:last_date],
                 ticker[3],
+                ticker[4],
             ),
             df_tickers,
         )
@@ -103,10 +134,11 @@ def split_tickers_train_test(df_tickers, last_days):
     df_tickers_test = list(
         map(
             lambda ticker: (
-                SharedPandasDataFrame(ticker[0].loc[last_date:]),
-                SharedPandasDataFrame(ticker[1].loc[last_date:]),
-                ticker[2],
+                ticker[0].loc[last_date:],
+                ticker[1].loc[last_date:],
+                ticker[2].loc[last_date:],
                 ticker[3],
+                ticker[4],
             ),
             df_tickers,
         )
@@ -172,26 +204,6 @@ def preprocess_add_features(df):
     # Drop NaN rows resulting from the indicator calculations
     df.dropna(inplace=True)
     return df
-
-
-# @profile
-def calculate_observation(preprocessed_df, pristine_df, buy_price):
-    curr_close = pristine_df.iloc[-1].Close
-    prev_close = pristine_df.iloc[-2].Close
-
-    if buy_price is None:
-        current_gain = 0
-    else:
-        current_gain = (curr_close - buy_price) / buy_price
-    previous_prices = preprocessed_df.to_numpy()  # shape = (N, 7)
-    buy_status = 1 if buy_price is not None else 0
-    observation = {
-        OBS_PRICES_SEQUENCE: previous_prices.astype(np.float32),
-        OBS_OTHER: np.concatenate([[buy_status], [current_gain]]).astype(np.float32),
-    }
-
-    return observation, curr_close, prev_close
-
 
 def test_preprocess_invert_preprocess(original_df):
     from sklearn.metrics import mean_absolute_error
@@ -361,7 +373,7 @@ def create_random_walk_price_data():
     from datetime import datetime, timedelta
 
     def generate_random_walk_data(
-        tickers, start_date, end_date, initial_price=100, freq="1T", volatility=0.02
+            tickers, start_date, end_date, initial_price=100, freq="1T", volatility=0.02
     ):
         data = []
         date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
@@ -410,93 +422,9 @@ def get_name_max_timesteps(models_dir):
     )
 
 
-class SharedPandasDataFrame:
-    """
-    Wraps a pandas dataframe so that it can be shared quickly among processes,
-    avoiding unnecessary copying and (de)serializing.
-    """
-
-    def __init__(self, df):
-        """
-        Creates the shared memory and copies the dataframe therein
-        """
-        self._values = SharedNumpyArray(df.values)
-        self._index = df.index
-        self._columns = df.columns
-
-    def read(self):
-        """
-        Reads the dataframe from the shared memory
-        without unnecessary copying.
-        """
-        return pd.DataFrame(
-            self._values.read(), index=self._index, columns=self._columns
-        )
-
-    def copy(self):
-        """
-        Returns a new copy of the dataframe stored in shared memory.
-        """
-        return pd.DataFrame(
-            self._values.copy(), index=self._index, columns=self._columns
-        )
-
-    def unlink(self):
-        """
-        Releases the allocated memory. Call when finished using the data,
-        or when the data was copied somewhere else.
-        """
-        self._values.unlink()
-
-
-class SharedNumpyArray:
-    """
-    Wraps a numpy array so that it can be shared quickly among processes,
-    avoiding unnecessary copying and (de)serializing.
-    """
-
-    def __init__(self, array):
-        """
-        Creates the shared memory and copies the array therein
-        """
-        # create the shared memory location of the same size of the array
-        self._shared = SharedMemory(create=True, size=array.nbytes)
-
-        # save data type and shape, necessary to read the data correctly
-        self._dtype, self._shape = array.dtype, array.shape
-
-        # create a new numpy array that uses the shared memory we created.
-        # at first, it is filled with zeros
-        res = np.ndarray(self._shape, dtype=self._dtype, buffer=self._shared.buf)
-
-        # copy data from the array to the shared memory. numpy will
-        # take care of copying everything in the correct format
-        res[:] = array[:]
-
-    def read(self):
-        """
-        Reads the array from the shared memory without unnecessary copying.
-        """
-        # simply create an array of the correct shape and type,
-        # using the shared memory location we created earlier
-        return np.ndarray(self._shape, self._dtype, buffer=self._shared.buf)
-
-    def copy(self):
-        """
-        Returns a new copy of the array stored in shared memory.
-        """
-        return np.copy(self.read())
-
-    def unlink(self):
-        """
-        Releases the allocated memory. Call when finished using the data,
-        or when the data was copied somewhere else.
-        """
-        self._shared.close()
-        self._shared.unlink()
-
 def stop_loss_price(price, percent):
     return price * (100 - percent) / 100
+
 
 def take_profit_price(price, percent):
     return price * (100 + percent) / 100

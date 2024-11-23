@@ -2,7 +2,7 @@ import time
 
 from binance_historical_data import BinanceDataDumper
 
-from util import __invert_preprocess, preprocess_scale, CustomEnv, OHLC_COLUMNS, preprocess_add_features, SEQUENCE_LENGTH, \
+from utils.util import __invert_preprocess, preprocess_scale, CustomEnv, OHLC_COLUMNS, preprocess_add_features, SEQUENCE_LENGTH, \
     PREDICTION_LENGTH, calculate_observation
 
 data_dumper = BinanceDataDumper(
@@ -105,7 +105,7 @@ with open('keys.txt', 'r') as f:
     api_key = f.readline().strip()
     secret_key = f.readline().strip()
 
-from binance import Client, ThreadedWebsocketManager, ThreadedDepthCacheManager
+from binance import Client
 
 client = Client(api_key, secret_key)
 
