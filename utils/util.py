@@ -63,7 +63,7 @@ def full_preprocess(df: pd.DataFrame, scaler=None):
 
 
 @line_profiler.profile
-def __full_handle_tickers(df_tickers, sl=0.5, tp=0.5):
+def __full_handle_tickers(df_tickers, sl=0.3, tp=0.3):
     datasets = []
 
     for df_ticker, _ in df_tickers:
