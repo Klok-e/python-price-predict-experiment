@@ -32,7 +32,7 @@ def preprocess_scale(df: pd.DataFrame, scaler=None):
     df_pct = df[OHLC_COLUMNS].pct_change()
 
     # Clamp
-    df_pct = np.tanh(df_pct)
+    df_pct = np.tanh(df_pct * 250)
 
     # Concatenate the percentage-changed OHLC with the other columns
     df_all = pd.concat([df_pct, df.drop(columns=OHLC_COLUMNS)], axis=1)
@@ -74,18 +74,15 @@ def __full_handle_tickers(df_tickers, sl=0.4, tp=0.4):
         )
         datasets.append(dataset_with_features)
 
-    combined_dataset = pd.concat(datasets)
-    _, combined_scaler = preprocess_scale(combined_dataset)
-
     results = []
 
     for i, dataset in enumerate(datasets):
-        df_scaled, _ = preprocess_scale(dataset, combined_scaler)
+        df_scaled, scaler = preprocess_scale(dataset)
         dataset = dataset.iloc[1:]
 
         labels = generate_labels_for_supervised(dataset, sl, tp)
 
-        results.append((df_scaled, dataset, labels, combined_scaler, df_tickers[i][1]))
+        results.append((df_scaled, dataset, labels, scaler, df_tickers[i][1]))
 
     return results
 
@@ -176,9 +173,9 @@ def preprocess_add_features(df):
     df["SMA_1024"] = df["Close"].rolling(window=1024).mean()
 
     # Convert SMA columns to distance in percentages from "Close"
-    df["SMA_256"] = (df["Close"] - df["SMA_256"]) / df["SMA_256"]
-    df["SMA_512"] = (df["Close"] - df["SMA_512"]) / df["SMA_512"]
-    df["SMA_1024"] = (df["Close"] - df["SMA_1024"]) / df["SMA_1024"]
+    df["SMA_256"] = np.tanh((df["Close"] - df["SMA_256"]) / df["SMA_256"] * 25)
+    df["SMA_512"] = np.tanh((df["Close"] - df["SMA_512"]) / df["SMA_512"] * 25)
+    df["SMA_1024"] = np.tanh((df["Close"] - df["SMA_1024"]) / df["SMA_1024"] * 25)
 
     # Add MACD
     macd = trend.MACD(df["Close"])
