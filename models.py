@@ -43,7 +43,7 @@ class LSTMPricePredictorModel(nn.Module):
 
         # Linear layers for the feedforward network
         self.linear_layers = nn.Sequential(
-            *[nn.Sequential(nn.Linear(in_f, out_f), nn.ReLU())
+            *[nn.Sequential(nn.Linear(in_f, out_f), nn.LeakyReLU())
               for in_f, out_f in zip([hidden_size] + linear_arch[:-1], linear_arch)]
         )
 

@@ -52,7 +52,7 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
 
     model = model_type(feature_size=feature_size, window_size=window_size, **model_kwargs).to(device)
     criterion = nn.BCELoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.01)
 
     for epoch in range(epochs):
         model.train()
