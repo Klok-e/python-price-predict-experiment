@@ -15,7 +15,7 @@ OHLC_COLUMNS = ["Open", "High", "Low", "Close"]
 OBS_OTHER = "other"
 OBS_PRICES_SEQUENCE = "prices_sequence"
 
-TICKERS = ["NEARUSDT", "SOLUSDT", "BTCUSDT", "ETHUSDT", "BNBUSDT"]
+TICKERS = ["NEARUSDT", ]#"SOLUSDT", "BTCUSDT", "ETHUSDT", "BNBUSDT"]
 
 BINANCE_DATA_START_DATE = datetime.date(2020, 1, 1)
 
@@ -63,7 +63,7 @@ def full_preprocess(df: pd.DataFrame, scaler=None):
 
 
 @line_profiler.profile
-def __full_handle_tickers(df_tickers, sl=0.3, tp=0.3):
+def __full_handle_tickers(df_tickers, sl=0.4, tp=0.4):
     datasets = []
 
     for df_ticker, _ in df_tickers:
