@@ -74,7 +74,7 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                 writer.add_scalar("Loss/train", total_train_loss / (batch_idx + 1),
                                   epoch * len(train_dataloader) + batch_idx)
 
-                writer.add_scalar("Learning Rate", scheduler.get_last_lr(),
+                writer.add_scalar("Learning Rate", scheduler.get_last_lr()[0],
                                   epoch * len(train_dataloader) + batch_idx)
 
                 # Evaluate on test data
