@@ -3,6 +3,7 @@ import os
 import pickle
 import re
 
+import line_profiler
 import numpy as np
 import pandas as pd
 from binance_historical_data import BinanceDataDumper
@@ -25,7 +26,7 @@ class MultiScaler:
         self.std = std
 
 
-# @profile
+@line_profiler.profile
 def preprocess_scale(df: pd.DataFrame, scaler=None):
     # Apply percentage change only to OHLC columns
     df_pct = df[OHLC_COLUMNS].pct_change()
@@ -61,6 +62,7 @@ def full_preprocess(df: pd.DataFrame, scaler=None):
     return df_preprocessed, scaler
 
 
+@line_profiler.profile
 def __full_handle_tickers(df_tickers, sl=0.4, tp=0.4):
     datasets = []
 
@@ -88,30 +90,26 @@ def __full_handle_tickers(df_tickers, sl=0.4, tp=0.4):
     return results
 
 
+@line_profiler.profile
 def generate_labels_for_supervised(pristine, sl, tp):
-    ticker_labels = []
+    close_prices = pristine['Close'].to_numpy()
+    ticker_labels = np.zeros(len(close_prices), dtype=int)
 
-    # Iterate over each row in the pristine DataFrame
-    for i in range(len(pristine)):
-        current_price = pristine.iloc[i].Close
-
-        # Calculate stop loss and take profit prices
+    for i in range(len(close_prices) - 1):
+        current_price = close_prices[i]
         sl_price = stop_loss_price(current_price, sl)
         tp_price = take_profit_price(current_price, tp)
 
-        # Initialize label as 0 (stop loss not triggered)
-        label = 0
+        future_prices = close_prices[i + 1:]
 
-        # Check future prices to determine if stop loss or take profit is triggered
-        for future_price in pristine.iloc[i + 1:]['Close']:
-            if future_price <= sl_price:
-                label = 0
-                break
-            elif future_price >= tp_price:
-                label = 1
-                break
+        # Find the first occurrence where stop loss or take profit is triggered
+        sl_triggered = np.where(future_prices <= sl_price)[0]
+        tp_triggered = np.where(future_prices >= tp_price)[0]
 
-        ticker_labels.append(label)
+        if tp_triggered.size > 0 and (sl_triggered.size == 0 or tp_triggered[0] < sl_triggered[0]):
+            ticker_labels[i] = 1
+        elif sl_triggered.size > 0:
+            ticker_labels[i] = 0
 
     return pd.DataFrame(ticker_labels, index=pristine.index, columns=['Label'])
 
@@ -315,7 +313,6 @@ def load_pickle(filename):
     # Load the processed data from disk
     with open(filename, "rb") as file:
         return pickle.load(file)
-
 
 def download_and_process_data_if_available(data_dir, reload=False):
     # Check if the processed data already exists
