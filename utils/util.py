@@ -92,6 +92,7 @@ def __full_handle_tickers(df_tickers, sl=0.4, tp=0.4):
 
 @line_profiler.profile
 def generate_labels_for_supervised(pristine, sl, tp):
+    LOOKAHEAD_STEPS = 256
     close_prices = pristine['Close'].to_numpy()
     ticker_labels = np.zeros(len(close_prices), dtype=int)
 
@@ -100,7 +101,8 @@ def generate_labels_for_supervised(pristine, sl, tp):
         sl_price = stop_loss_price(current_price, sl)
         tp_price = take_profit_price(current_price, tp)
 
-        future_prices = close_prices[i + 1:]
+        # Limit future prices to the next 256 timesteps
+        future_prices = close_prices[i + 1:i + 1 + LOOKAHEAD_STEPS]
 
         # Find the first occurrence where stop loss or take profit is triggered
         sl_triggered = np.where(future_prices <= sl_price)[0]
