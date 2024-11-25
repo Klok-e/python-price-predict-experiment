@@ -35,7 +35,7 @@ class PriceDataset(Dataset):
 
 def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_tickers_test, window_size,
                            computed_data_dir, epochs=10,
-                           batch_size=4096, learning_rate=0.001, log_interval=100):
+                           batch_size=4096, learning_rate=0.0001, log_interval=100):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     first_dataset = df_tickers_train[0][0]
@@ -54,7 +54,7 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
 
     model = model_type(feature_size=feature_size, window_size=window_size, **model_kwargs).to(device)
     criterion = nn.BCELoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=1)
 
     for epoch in range(epochs):
