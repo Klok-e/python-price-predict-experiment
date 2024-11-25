@@ -179,7 +179,7 @@ def preprocess_add_features(df):
 
     # Add MACD
     macd = trend.MACD(df["Close"])
-    df["MACD_diff"] = macd.macd_diff()
+    df["MACD_diff"] = np.tanh(macd.macd_diff() * 100)
 
     # Add RSI
     df["RSI"] = momentum.RSIIndicator(df["Close"]).rsi()
