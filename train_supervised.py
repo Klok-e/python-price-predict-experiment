@@ -58,8 +58,9 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
 
     for epoch in range(epochs):
         model.train()
-        total_train_loss = 0
         total_test_loss = 0
+        train_loss = 0
+
         for batch_idx, (inputs, labels) in enumerate(train_dataloader):
             inputs, labels = inputs.to(device), labels.to(device)
 
@@ -67,16 +68,18 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
             outputs = model(inputs)
             loss = criterion(outputs, labels)
 
-            total_train_loss += loss.item()
+            train_loss += loss.item()
             loss.backward()
             optimizer.step()
 
-            if batch_idx % log_interval == 0:
-                writer.add_scalar("Loss/train", total_train_loss / (batch_idx + 1),
+            if (batch_idx + 1) % log_interval == 0:
+                writer.add_scalar("Loss/train", train_loss / log_interval,
                                   epoch * len(train_dataloader) + batch_idx)
 
                 writer.add_scalar("Learning Rate", scheduler.get_last_lr()[0],
                                   epoch * len(train_dataloader) + batch_idx)
+
+                train_loss = 0
 
                 # Evaluate on test data
                 model.eval()
