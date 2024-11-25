@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from sklearn.metrics import roc_auc_score
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
@@ -54,7 +55,7 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
     model = model_type(feature_size=feature_size, window_size=window_size, **model_kwargs).to(device)
     criterion = nn.BCELoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.001)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=1)
+    # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=1)
 
     for epoch in range(epochs):
         model.train()
@@ -76,8 +77,8 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                 writer.add_scalar("Loss/train", train_loss / log_interval,
                                   epoch * len(train_dataloader) + batch_idx)
 
-                writer.add_scalar("Learning Rate", scheduler.get_last_lr()[0],
-                                  epoch * len(train_dataloader) + batch_idx)
+                # writer.add_scalar("Learning Rate", scheduler.get_last_lr()[0],
+                #                   epoch * len(train_dataloader) + batch_idx)
 
                 train_loss = 0
 
@@ -86,6 +87,8 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                 total_test_loss = 0
                 correct_predictions = 0
                 total_samples = 0
+                all_labels = []
+                all_probs = []
                 with torch.no_grad():
                     for inputs, labels in test_dataloader:
                         inputs, labels = inputs.to(device), labels.to(device)
@@ -98,10 +101,17 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                         correct_predictions += (predictions == labels).sum().item()
                         total_samples += labels.size(0)
 
+                        # Store labels and probabilities for ROC AUC
+                        all_labels.extend(labels.cpu().numpy())
+                        all_probs.extend(outputs.cpu().numpy())
+
                 test_accuracy = correct_predictions / total_samples
+                test_roc_auc = roc_auc_score(all_labels, all_probs)
                 writer.add_scalar("Loss/test", total_test_loss / len(test_dataloader),
                                   epoch * len(train_dataloader) + batch_idx)
                 writer.add_scalar("Accuracy/test", test_accuracy,
+                                  epoch * len(train_dataloader) + batch_idx)
+                writer.add_scalar("ROC AUC/test", test_roc_auc,
                                   epoch * len(train_dataloader) + batch_idx)
 
                 model_save_path = f"{computed_data_dir}/supervised_model/epoch_{epoch}_batch_{batch_idx}_test_accuracy_{test_accuracy}.pth"
@@ -110,7 +120,7 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
 
                 model.train()
 
-        scheduler.step(total_test_loss / len(test_dataloader))
+        # scheduler.step(total_test_loss / len(test_dataloader))
 
         print(f"epoch {epoch} ended")
 
