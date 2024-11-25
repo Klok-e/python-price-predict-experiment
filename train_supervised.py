@@ -94,8 +94,6 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                         correct_predictions += (predictions == labels).sum().item()
                         total_samples += labels.size(0)
 
-                scheduler.step(total_test_loss / len(test_dataloader))
-
                 test_accuracy = correct_predictions / total_samples
                 writer.add_scalar("Loss/test", total_test_loss / len(test_dataloader),
                                   epoch * len(train_dataloader) + batch_idx)
@@ -105,6 +103,8 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                 model_save_path = f"{computed_data_dir}/supervised_model/epoch_{epoch}_batch_{batch_idx}_test_accuracy_{test_accuracy}.pth"
                 create_dir_if_not_exists(model_save_path)
                 torch.save(model.state_dict(), model_save_path)
+
+                scheduler.step(total_test_loss / len(test_dataloader))
 
                 model.train()
 
