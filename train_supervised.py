@@ -34,7 +34,7 @@ class PriceDataset(Dataset):
 
 def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_tickers_test, window_size,
                            computed_data_dir, epochs=10,
-                           batch_size=4096, learning_rate=0.01, log_interval=100):
+                           batch_size=4096, learning_rate=0.001, log_interval=100):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     first_dataset = df_tickers_train[0][0]
