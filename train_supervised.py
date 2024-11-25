@@ -55,11 +55,12 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
     model = model_type(feature_size=feature_size, window_size=window_size, **model_kwargs).to(device)
     criterion = nn.BCELoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=50)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=0)
 
     for epoch in range(epochs):
         model.train()
         train_loss = 0
+        total_test_loss = 0
 
         for batch_idx, (inputs, labels) in enumerate(train_dataloader):
             inputs, labels = inputs.to(device), labels.to(device)
@@ -119,7 +120,7 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
 
                 model.train()
 
-                scheduler.step(total_test_loss / len(test_dataloader))
+        scheduler.step(total_test_loss / len(test_dataloader))
 
         print(f"epoch {epoch} ended")
 
