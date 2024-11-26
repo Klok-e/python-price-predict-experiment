@@ -38,12 +38,12 @@ def calculate_class_weights(labels):
     class_weights = 1. / class_counts
     return class_weights
 
-def calculate_sample_weights(df_tickers):
-    all_labels = np.concatenate([ticker[2] for ticker in df_tickers]).reshape((-1,))
+def calculate_sample_weights(df_tickers, window_size):
+    all_labels = np.concatenate([ticker[2][window_size - 1:] for ticker in df_tickers]).reshape((-1,))
 
     # Calculate class weights
     class_weights = calculate_class_weights(all_labels.astype(int))
-    return np.array([class_weights[int(label)] for label in np.unique(all_labels)])
+    return np.array([class_weights[int(label)] for label in all_labels])
 
 
 def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_tickers_test, window_size,
@@ -57,15 +57,15 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
     train_dataset = PriceDataset(df_tickers_train, window_size)
     test_dataset = PriceDataset(df_tickers_test, window_size)
 
-    sample_weights_train = calculate_sample_weights(df_tickers_train)
+    sample_weights_train = calculate_sample_weights(df_tickers_train, window_size)
     sampler_train = WeightedRandomSampler(sample_weights_train, len(train_dataset))
 
-    sample_weights_test = calculate_sample_weights(df_tickers_test)
+    sample_weights_test = calculate_sample_weights(df_tickers_test, window_size)
     sampler_test = WeightedRandomSampler(sample_weights_test, len(test_dataset))
 
     # Create dataloaders
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler_train, drop_last=True)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, sampler=sampler_test, drop_last=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler_train)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, sampler=sampler_test)
 
     log_dir = f"{computed_data_dir}/tensorboard/"
     create_dir_if_not_exists(log_dir)
