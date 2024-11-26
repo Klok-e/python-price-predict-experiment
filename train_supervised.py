@@ -80,7 +80,7 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
     for epoch in range(epochs):
         model.train()
         train_loss = 0
-        total_test_loss = 0
+        epoch_train_loss = 0
 
         for batch_idx, (inputs, labels) in enumerate(train_dataloader):
             inputs, labels = inputs.to(device), labels.to(device)
@@ -90,6 +90,7 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
             loss = criterion(outputs, labels)
 
             train_loss += loss.item()
+            epoch_train_loss += loss.item()
             loss.backward()
             optimizer.step()
 
@@ -140,9 +141,9 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
 
                 model.train()
 
-        scheduler.step(total_test_loss / len(test_dataloader))
+        scheduler.step(epoch_train_loss / len(train_dataloader))
 
-        print(f"epoch {epoch} ended")
+        print(f"epoch {epoch} ended; epoch training loss: {epoch_train_loss / len(train_dataloader)}")
 
     writer.close()
 
