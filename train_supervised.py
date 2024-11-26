@@ -39,8 +39,8 @@ def calculate_class_weights(labels):
     return class_weights
 
 
-def calculate_sample_weights(dataset):
-    all_labels = np.concatenate([dataset[i][1] for i in range(len(dataset))])
+def calculate_sample_weights(df_tickers, window_size):
+    all_labels = np.concatenate([ticker[2][window_size - 1:] for ticker in df_tickers]).reshape(-1)
 
     # Calculate class weights
     class_weights = calculate_class_weights(all_labels.astype(int))
@@ -58,10 +58,10 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
     train_dataset = PriceDataset(df_tickers_train, window_size)
     test_dataset = PriceDataset(df_tickers_test, window_size)
 
-    sample_weights_train = calculate_sample_weights(train_dataset)
+    sample_weights_train = calculate_sample_weights(train_dataset, window_size)
     sampler_train = WeightedRandomSampler(sample_weights_train, len(train_dataset))
 
-    sample_weights_test = calculate_sample_weights(test_dataset)
+    sample_weights_test = calculate_sample_weights(test_dataset, window_size)
     sampler_test = WeightedRandomSampler(sample_weights_test, len(test_dataset))
 
     # Create dataloaders
