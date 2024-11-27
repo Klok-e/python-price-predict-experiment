@@ -17,10 +17,10 @@ OBS_PRICES_SEQUENCE = "prices_sequence"
 
 TICKERS = [
     "NEARUSDT",
-    # "SOLUSDT",
-    # "BTCUSDT",
-    # "ETHUSDT",
-    # "BNBUSDT"
+    "SOLUSDT",
+    "BTCUSDT",
+    "ETHUSDT",
+    "BNBUSDT"
 ]
 
 BINANCE_DATA_START_DATE = datetime.date(2020, 1, 1)
@@ -185,7 +185,7 @@ def preprocess_add_features(df):
 
     # Add MACD
     macd = trend.MACD(df["Close"])
-    df["MACD_diff"] = np.tanh(macd.macd_diff() * 100)
+    df["MACD_diff"] = np.tanh((macd.macd_diff() * 600 / df["Close"]))
 
     # Add RSI
     df["RSI"] = momentum.RSIIndicator(df["Close"]).rsi()
@@ -255,17 +255,18 @@ def test_orig_val(dataset):
     )
 
 
-def __download_data(data_dir):
-    data_dumper = BinanceDataDumper(
-        path_dir_where_to_dump=f"{data_dir}/",
-        asset_class="spot",  # spot, um, cm
-        data_type="klines",  # aggTrades, klines, trades
-        data_frequency="1m",
-    )
+def __download_data(data_dir, need_download):
+    if need_download:
+        data_dumper = BinanceDataDumper(
+            path_dir_where_to_dump=f"{data_dir}/",
+            asset_class="spot",  # spot, um, cm
+            data_type="klines",  # aggTrades, klines, trades
+            data_frequency="1m",
+        )
 
-    print(data_dumper.get_list_all_trading_pairs())
+        print(data_dumper.get_list_all_trading_pairs())
 
-    data_dumper.dump_data(tickers=TICKERS, date_start=BINANCE_DATA_START_DATE)
+        data_dumper.dump_data(tickers=TICKERS, date_start=BINANCE_DATA_START_DATE)
 
     return list(
         zip(map(lambda ticker: __get_df_for_ticker(data_dir, ticker), TICKERS), TICKERS)
@@ -320,7 +321,7 @@ def load_pickle(filename):
         return pickle.load(file)
 
 
-def download_and_process_data_if_available(data_dir, reload=False):
+def download_and_process_data_if_available(data_dir, reload=False, need_download=True):
     # Check if the processed data already exists
     cache_path = f"{data_dir}/df_tickers.pkl"
     if os.path.exists(cache_path) and not reload:
@@ -328,7 +329,7 @@ def download_and_process_data_if_available(data_dir, reload=False):
         return load_pickle(cache_path)
     else:
         print("Downloading and processing data")
-        df_tickers = __download_data(data_dir)
+        df_tickers = __download_data(data_dir, need_download)
         df_tickers_processed = __full_handle_tickers(df_tickers)
         save_pickle(df_tickers_processed, cache_path)
         return df_tickers_processed

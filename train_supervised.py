@@ -50,7 +50,7 @@ def calculate_sample_weights(df_tickers, window_size):
 def load_model(model, model_path):
     if os.path.exists(model_path):
         print(f"Loading model from {model_path}")
-        model.load_state_dict(torch.load(model_path))
+        model.load_state_dict(torch.load(model_path, weights_only=True))
     else:
         print(f"No pre-trained model found at {model_path}.")
     return model
