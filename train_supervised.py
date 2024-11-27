@@ -92,10 +92,10 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
             optimizer.step()
 
             if (batch_idx + 1) % log_interval == 0:
-                writer.add_scalar("Loss/train", train_loss / log_interval,
+                writer.add_scalar("train/Loss", train_loss / log_interval,
                                   epoch * len(train_dataloader) + batch_idx)
 
-                writer.add_scalar("Learning Rate", scheduler.get_last_lr()[0],
+                writer.add_scalar("train/Learning Rate", scheduler.get_last_lr()[0],
                                   epoch * len(train_dataloader) + batch_idx)
 
                 train_loss = 0
@@ -131,17 +131,17 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                 test_f1 = f1_score(all_labels, predictions.cpu().numpy(), average='binary')
 
                 # Log metrics
-                writer.add_scalar("Loss/test", total_test_loss / len(test_dataloader),
+                writer.add_scalar("test/Loss", total_test_loss / len(test_dataloader),
                                   epoch * len(train_dataloader) + batch_idx)
-                writer.add_scalar("Accuracy/test", test_accuracy,
+                writer.add_scalar("test/Accuracy", test_accuracy,
                                   epoch * len(train_dataloader) + batch_idx)
-                writer.add_scalar("ROC AUC/test", test_roc_auc,
+                writer.add_scalar("test/ROC AUC", test_roc_auc,
                                   epoch * len(train_dataloader) + batch_idx)
-                writer.add_scalar("Precision/test", test_precision,
+                writer.add_scalar("test/Precision", test_precision,
                                   epoch * len(train_dataloader) + batch_idx)
-                writer.add_scalar("Recall/test", test_recall,
+                writer.add_scalar("test/Recall", test_recall,
                                   epoch * len(train_dataloader) + batch_idx)
-                writer.add_scalar("F1 Score/test", test_f1,
+                writer.add_scalar("test/F1 Score", test_f1,
                                   epoch * len(train_dataloader) + batch_idx)
 
                 if save_model:
