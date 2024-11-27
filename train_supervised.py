@@ -67,7 +67,7 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
 
     log_dir = f"{computed_data_dir}/tensorboard/"
     create_dir_if_not_exists(log_dir)
-    writer = SummaryWriter(f"{log_dir}run{len(os.listdir(log_dir))}")
+    writer = SummaryWriter(f"{log_dir}{model_name}{len(os.listdir(log_dir))}")
 
     model = model_type(feature_size=feature_size, window_size=window_size, **model_kwargs).to(device)
     criterion = nn.BCELoss()
