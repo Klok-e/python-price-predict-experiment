@@ -115,7 +115,7 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                         total_test_loss += loss.item()
 
                         # Calculate predictions
-                        predictions = (outputs > 0.8).float()
+                        predictions = (outputs > 0.6).float()
 
                         # Store labels, probabilities, and predictions
                         all_labels.extend(labels.cpu().numpy())
