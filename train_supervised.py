@@ -115,7 +115,7 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                         total_test_loss += loss.item()
 
                         # Calculate predictions
-                        predictions = (outputs > 0.5).float()
+                        predictions = (outputs > 0.8).float()
 
                         # Store labels, probabilities, and predictions
                         all_labels.extend(labels.cpu().numpy())
@@ -125,7 +125,7 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                 # Calculate additional metrics
                 test_accuracy = (np.array(all_predictions) == np.array(all_labels)).mean()
                 test_roc_auc = roc_auc_score(all_labels, all_probs)
-                test_precision = precision_score(all_labels, all_predictions, average='binary')
+                test_precision = precision_score(all_labels, all_predictions, average='binary', zero_division=0)
                 test_recall = recall_score(all_labels, all_predictions, average='binary')
                 test_f1 = f1_score(all_labels, all_predictions, average='binary')
 
