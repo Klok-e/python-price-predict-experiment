@@ -47,9 +47,19 @@ def calculate_sample_weights(df_tickers, window_size):
     return np.array([class_weights[int(label)] for label in all_labels])
 
 
+def load_model(model, model_path):
+    if os.path.exists(model_path):
+        print(f"Loading model from {model_path}")
+        model.load_state_dict(torch.load(model_path))
+    else:
+        print(f"No pre-trained model found at {model_path}.")
+    return model
+
+
 def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_tickers_test, window_size,
-                           computed_data_dir,model_name, epochs=10,
-                           batch_size=4096, learning_rate=0.0001, log_interval=100, save_model=False):
+                           computed_data_dir, model_name, epochs=10,
+                           batch_size=4096, learning_rate=0.0001, log_interval=100, save_model=False,
+                           continue_training=True):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     feature_size = df_tickers_train[0][0].shape[1]
@@ -70,6 +80,12 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
     writer = SummaryWriter(f"{log_dir}{model_name}{len(os.listdir(log_dir))}")
 
     model = model_type(feature_size=feature_size, window_size=window_size, **model_kwargs).to(device)
+
+    # Load pre-trained model if continue_training is True
+    model_save_path = f"{computed_data_dir}/supervised_model/{model_name}.pth"
+    if continue_training:
+        model = load_model(model, model_save_path)
+
     criterion = nn.BCELoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=1)
@@ -144,7 +160,6 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                                   epoch * len(train_dataloader) + batch_idx)
 
                 if save_model:
-                    model_save_path = f"{computed_data_dir}/supervised_model/{model_name}.pth"
                     create_dir_if_not_exists(model_save_path)
                     torch.save(model.state_dict(), model_save_path)
 
