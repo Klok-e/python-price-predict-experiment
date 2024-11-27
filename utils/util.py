@@ -33,7 +33,7 @@ class MultiScaler:
 
 
 @line_profiler.profile
-def preprocess_scale(df: pd.DataFrame, scaler=None):
+def preprocess_make_ohlc_relative(df: pd.DataFrame):
     # Apply percentage change only to OHLC columns
     df_pct = df[OHLC_COLUMNS].pct_change()
 
@@ -46,7 +46,10 @@ def preprocess_scale(df: pd.DataFrame, scaler=None):
     # Drop NA values (from pct_change operation)
     df_all.dropna(inplace=True)
 
-    # Apply MinMax scaling to all columns
+    return df_all
+
+@line_profiler.profile
+def scale_dataframe(df_all: pd.DataFrame, scaler=None):
     if scaler is None:
         scaler = MultiScaler(
             MinMaxScaler(feature_range=(-1, 1), copy=False), StandardScaler(copy=False)
@@ -62,12 +65,6 @@ def preprocess_scale(df: pd.DataFrame, scaler=None):
     return df_scaled, scaler
 
 
-def full_preprocess(df: pd.DataFrame, scaler=None):
-    df_features = preprocess_add_features(df)
-    df_preprocessed, scaler = preprocess_scale(df_features, scaler=scaler)
-    return df_preprocessed, scaler
-
-
 @line_profiler.profile
 def __full_handle_tickers(df_tickers, sl=1, tp=1):
     datasets = []
@@ -78,17 +75,17 @@ def __full_handle_tickers(df_tickers, sl=1, tp=1):
         dataset_with_features = preprocess_add_features(
             pd.DataFrame(dataset, columns=OHLC_COLUMNS)
         )
-        datasets.append(dataset_with_features)
+        datasets.append((dataset_with_features, preprocess_make_ohlc_relative(dataset_with_features)))
+
+    _, combined_scaler = scale_dataframe(pd.concat([relative_df for _, relative_df in datasets]))
 
     results = []
+    for i, (pristine_dataset, preprocessed_dataset) in enumerate(datasets):
+        df_scaled, _ = scale_dataframe(preprocessed_dataset, combined_scaler)
 
-    for i, dataset in enumerate(datasets):
-        df_scaled, scaler = preprocess_scale(dataset)
-        dataset = dataset.iloc[1:]
+        labels = generate_labels_for_supervised(pristine_dataset.iloc[1:], sl, tp)
 
-        labels = generate_labels_for_supervised(dataset, sl, tp)
-
-        results.append((df_scaled, dataset, labels, scaler, df_tickers[i][1]))
+        results.append((df_scaled, pristine_dataset, labels, combined_scaler, df_tickers[i][1]))
 
     return results
 
