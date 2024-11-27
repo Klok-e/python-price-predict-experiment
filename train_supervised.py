@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, precision_score, recall_score, f1_score
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
@@ -123,13 +123,25 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                         all_labels.extend(labels.cpu().numpy())
                         all_probs.extend(outputs.cpu().numpy())
 
+                # Calculate additional metrics
                 test_accuracy = correct_predictions / total_samples
                 test_roc_auc = roc_auc_score(all_labels, all_probs)
+                test_precision = precision_score(all_labels, predictions.cpu().numpy(), average='binary')
+                test_recall = recall_score(all_labels, predictions.cpu().numpy(), average='binary')
+                test_f1 = f1_score(all_labels, predictions.cpu().numpy(), average='binary')
+
+                # Log metrics
                 writer.add_scalar("Loss/test", total_test_loss / len(test_dataloader),
                                   epoch * len(train_dataloader) + batch_idx)
                 writer.add_scalar("Accuracy/test", test_accuracy,
                                   epoch * len(train_dataloader) + batch_idx)
                 writer.add_scalar("ROC AUC/test", test_roc_auc,
+                                  epoch * len(train_dataloader) + batch_idx)
+                writer.add_scalar("Precision/test", test_precision,
+                                  epoch * len(train_dataloader) + batch_idx)
+                writer.add_scalar("Recall/test", test_recall,
+                                  epoch * len(train_dataloader) + batch_idx)
+                writer.add_scalar("F1 Score/test", test_f1,
                                   epoch * len(train_dataloader) + batch_idx)
 
                 if save_model:
