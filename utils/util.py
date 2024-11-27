@@ -15,7 +15,13 @@ OHLC_COLUMNS = ["Open", "High", "Low", "Close"]
 OBS_OTHER = "other"
 OBS_PRICES_SEQUENCE = "prices_sequence"
 
-TICKERS = ["NEARUSDT", ]#"SOLUSDT", "BTCUSDT", "ETHUSDT", "BNBUSDT"]
+TICKERS = [
+    "NEARUSDT",
+    # "SOLUSDT",
+    # "BTCUSDT",
+    # "ETHUSDT",
+    # "BNBUSDT"
+]
 
 BINANCE_DATA_START_DATE = datetime.date(2020, 1, 1)
 
@@ -312,6 +318,7 @@ def load_pickle(filename):
     # Load the processed data from disk
     with open(filename, "rb") as file:
         return pickle.load(file)
+
 
 def download_and_process_data_if_available(data_dir, reload=False):
     # Check if the processed data already exists

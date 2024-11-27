@@ -103,10 +103,10 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                 # Evaluate on test data
                 model.eval()
                 total_test_loss = 0
-                correct_predictions = 0
-                total_samples = 0
                 all_labels = []
+                all_predictions = []
                 all_probs = []
+
                 with torch.no_grad():
                     for inputs, labels in test_dataloader:
                         inputs, labels = inputs.to(device), labels.to(device)
@@ -114,21 +114,20 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                         loss = criterion(outputs, labels)
                         total_test_loss += loss.item()
 
-                        # Calculate accuracy
+                        # Calculate predictions
                         predictions = (outputs > 0.5).float()
-                        correct_predictions += (predictions == labels).sum().item()
-                        total_samples += labels.size(0)
 
-                        # Store labels and probabilities for ROC AUC
+                        # Store labels, probabilities, and predictions
                         all_labels.extend(labels.cpu().numpy())
                         all_probs.extend(outputs.cpu().numpy())
+                        all_predictions.extend(predictions.cpu().numpy())
 
                 # Calculate additional metrics
-                test_accuracy = correct_predictions / total_samples
+                test_accuracy = (np.array(all_predictions) == np.array(all_labels)).mean()
                 test_roc_auc = roc_auc_score(all_labels, all_probs)
-                test_precision = precision_score(all_labels, predictions.cpu().numpy(), average='binary')
-                test_recall = recall_score(all_labels, predictions.cpu().numpy(), average='binary')
-                test_f1 = f1_score(all_labels, predictions.cpu().numpy(), average='binary')
+                test_precision = precision_score(all_labels, all_predictions, average='binary')
+                test_recall = recall_score(all_labels, all_predictions, average='binary')
+                test_f1 = f1_score(all_labels, all_predictions, average='binary')
 
                 # Log metrics
                 writer.add_scalar("test/Loss", total_test_loss / len(test_dataloader),
