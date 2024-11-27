@@ -48,7 +48,7 @@ def calculate_sample_weights(df_tickers, window_size):
 
 
 def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_tickers_test, window_size,
-                           computed_data_dir, epochs=10,
+                           computed_data_dir,model_name, epochs=10,
                            batch_size=4096, learning_rate=0.0001, log_interval=100, save_model=False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -145,7 +145,7 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                                   epoch * len(train_dataloader) + batch_idx)
 
                 if save_model:
-                    model_save_path = f"{computed_data_dir}/supervised_model/epoch_{epoch}_batch_{batch_idx}_test_accuracy_{test_accuracy}.pth"
+                    model_save_path = f"{computed_data_dir}/supervised_model/{model_name}.pth"
                     create_dir_if_not_exists(model_save_path)
                     torch.save(model.state_dict(), model_save_path)
 
