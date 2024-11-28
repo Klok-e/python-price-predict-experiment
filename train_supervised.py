@@ -59,7 +59,7 @@ def load_model(model, model_path):
 def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_tickers_test, window_size,
                            computed_data_dir, model_name, epochs=10,
                            batch_size=4096, learning_rate=0.0001, log_interval=100, save_model=False,
-                           continue_training=True, test_prediction_threshold=0.6):
+                           continue_training=True, test_prediction_threshold=0.5):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     feature_size = df_tickers_train[0][0].shape[1]
