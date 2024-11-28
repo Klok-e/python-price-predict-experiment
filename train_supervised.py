@@ -77,98 +77,96 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
 
     log_dir = f"{computed_data_dir}/tensorboard/"
     create_dir_if_not_exists(log_dir)
-    writer = SummaryWriter(f"{log_dir}{model_name}{len(os.listdir(log_dir))}")
 
-    model = model_type(feature_size=feature_size, window_size=window_size, **model_kwargs).to(device)
+    with SummaryWriter(f"{log_dir}{model_name}{len(os.listdir(log_dir))}") as writer:
+        model = model_type(feature_size=feature_size, window_size=window_size, **model_kwargs).to(device)
 
-    # Load pre-trained model if continue_training is True
-    model_save_path = f"{computed_data_dir}/supervised_model/{model_name}.pth"
-    if continue_training:
-        model = load_model(model, model_save_path)
+        # Load pre-trained model if continue_training is True
+        model_save_path = f"{computed_data_dir}/supervised_model/{model_name}.pth"
+        if continue_training:
+            model = load_model(model, model_save_path)
 
-    criterion = nn.BCELoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=1)
+        criterion = nn.BCELoss()
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
+        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=1)
 
-    for epoch in range(epochs):
-        model.train()
-        train_loss = 0
-        epoch_train_loss = 0
+        for epoch in range(epochs):
+            model.train()
+            train_loss = 0
+            epoch_train_loss = 0
 
-        for batch_idx, (inputs, labels) in enumerate(train_dataloader):
-            inputs, labels = inputs.to(device), labels.to(device)
+            for batch_idx, (inputs, labels) in enumerate(train_dataloader):
+                inputs, labels = inputs.to(device), labels.to(device)
 
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
+                optimizer.zero_grad()
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
 
-            train_loss += loss.item()
-            epoch_train_loss += loss.item()
-            loss.backward()
-            optimizer.step()
+                train_loss += loss.item()
+                epoch_train_loss += loss.item()
+                loss.backward()
+                optimizer.step()
 
-            if (batch_idx + 1) % log_interval == 0:
-                writer.add_scalar("train/Loss", train_loss / log_interval,
-                                  epoch * len(train_dataloader) + batch_idx)
+                if (batch_idx + 1) % log_interval == 0:
+                    writer.add_scalar("train/Loss", train_loss / log_interval,
+                                      epoch * len(train_dataloader) + batch_idx)
 
-                writer.add_scalar("train/Learning Rate", scheduler.get_last_lr()[0],
-                                  epoch * len(train_dataloader) + batch_idx)
+                    writer.add_scalar("train/Learning Rate", scheduler.get_last_lr()[0],
+                                      epoch * len(train_dataloader) + batch_idx)
 
-                train_loss = 0
+                    train_loss = 0
 
-                # Evaluate on test data
-                model.eval()
-                total_test_loss = 0
-                all_labels = []
-                all_predictions = []
-                all_probs = []
+                    # Evaluate on test data
+                    model.eval()
+                    total_test_loss = 0
+                    all_labels = []
+                    all_predictions = []
+                    all_probs = []
 
-                with torch.no_grad():
-                    for inputs, labels in test_dataloader:
-                        inputs, labels = inputs.to(device), labels.to(device)
-                        outputs = model(inputs)
-                        loss = criterion(outputs, labels)
-                        total_test_loss += loss.item()
+                    with torch.no_grad():
+                        for inputs, labels in test_dataloader:
+                            inputs, labels = inputs.to(device), labels.to(device)
+                            outputs = model(inputs)
+                            loss = criterion(outputs, labels)
+                            total_test_loss += loss.item()
 
-                        # Calculate predictions
-                        predictions = (outputs > test_prediction_threshold).float()
+                            # Calculate predictions
+                            predictions = (outputs > test_prediction_threshold).float()
 
-                        # Store labels, probabilities, and predictions
-                        all_labels.extend(labels.cpu().numpy())
-                        all_probs.extend(outputs.cpu().numpy())
-                        all_predictions.extend(predictions.cpu().numpy())
+                            # Store labels, probabilities, and predictions
+                            all_labels.extend(labels.cpu().numpy())
+                            all_probs.extend(outputs.cpu().numpy())
+                            all_predictions.extend(predictions.cpu().numpy())
 
-                # Calculate additional metrics
-                test_accuracy = (np.array(all_predictions) == np.array(all_labels)).mean()
-                test_roc_auc = roc_auc_score(all_labels, all_probs)
-                test_precision = precision_score(all_labels, all_predictions, average='binary', zero_division=0)
-                test_recall = recall_score(all_labels, all_predictions, average='binary')
-                test_f1 = f1_score(all_labels, all_predictions, average='binary')
+                    # Calculate additional metrics
+                    test_accuracy = (np.array(all_predictions) == np.array(all_labels)).mean()
+                    test_roc_auc = roc_auc_score(all_labels, all_probs)
+                    test_precision = precision_score(all_labels, all_predictions, average='binary', zero_division=0)
+                    test_recall = recall_score(all_labels, all_predictions, average='binary')
+                    test_f1 = f1_score(all_labels, all_predictions, average='binary')
 
-                # Log metrics
-                writer.add_scalar("test/Loss", total_test_loss / len(test_dataloader),
-                                  epoch * len(train_dataloader) + batch_idx)
-                writer.add_scalar("test/Accuracy", test_accuracy,
-                                  epoch * len(train_dataloader) + batch_idx)
-                writer.add_scalar("test/ROC AUC", test_roc_auc,
-                                  epoch * len(train_dataloader) + batch_idx)
-                writer.add_scalar("test/Precision", test_precision,
-                                  epoch * len(train_dataloader) + batch_idx)
-                writer.add_scalar("test/Recall", test_recall,
-                                  epoch * len(train_dataloader) + batch_idx)
-                writer.add_scalar("test/F1 Score", test_f1,
-                                  epoch * len(train_dataloader) + batch_idx)
+                    # Log metrics
+                    writer.add_scalar("test/Loss", total_test_loss / len(test_dataloader),
+                                      epoch * len(train_dataloader) + batch_idx)
+                    writer.add_scalar("test/Accuracy", test_accuracy,
+                                      epoch * len(train_dataloader) + batch_idx)
+                    writer.add_scalar("test/ROC AUC", test_roc_auc,
+                                      epoch * len(train_dataloader) + batch_idx)
+                    writer.add_scalar("test/Precision", test_precision,
+                                      epoch * len(train_dataloader) + batch_idx)
+                    writer.add_scalar("test/Recall", test_recall,
+                                      epoch * len(train_dataloader) + batch_idx)
+                    writer.add_scalar("test/F1 Score", test_f1,
+                                      epoch * len(train_dataloader) + batch_idx)
 
-                if save_model:
-                    create_dir_if_not_exists(model_save_path)
-                    torch.save(model.state_dict(), model_save_path)
+                    if save_model:
+                        create_dir_if_not_exists(model_save_path)
+                        torch.save(model.state_dict(), model_save_path)
 
-                model.train()
+                    model.train()
 
-        scheduler.step(epoch_train_loss / len(train_dataloader))
+            scheduler.step(epoch_train_loss / len(train_dataloader))
 
-        print(f"epoch {epoch} ended; epoch training loss: {epoch_train_loss / len(train_dataloader)}")
-
-    writer.close()
+            print(f"epoch {epoch} ended; epoch training loss: {epoch_train_loss / len(train_dataloader)}")
 
     return model
