@@ -22,7 +22,7 @@ TICKERS = [
     "BNBUSDT"
 ]
 
-BINANCE_DATA_START_DATE = datetime.date(2023, 1, 1)
+BINANCE_DATA_START_DATE = datetime.date(2025, 1, 1)
 
 
 class MultiScaler:
