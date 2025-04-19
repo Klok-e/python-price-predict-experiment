@@ -70,7 +70,7 @@ def __full_handle_tickers(df_tickers, sl=1, tp=1):
 
     for df_ticker, _ in df_tickers:
         dataset = df_ticker.loc[:, OHLC_COLUMNS].astype(np.float32)
-        dataset.index = pd.to_datetime(df_ticker["Open time"], unit="ms")
+        dataset.index = pd.to_datetime(df_ticker["Open time"], unit="us")
         dataset_with_features = preprocess_add_features(
             pd.DataFrame(dataset, columns=OHLC_COLUMNS)
         )
@@ -262,7 +262,7 @@ def __download_data(data_dir, need_download):
 
         print(data_dumper.get_list_all_trading_pairs())
 
-        data_dumper.dump_data(tickers=TICKERS, date_start=BINANCE_DATA_START_DATE)
+        data_dumper.dump_data(tickers=TICKERS, date_start=BINANCE_DATA_START_DATE, is_to_update_existing=True)
 
     return list(
         zip(map(lambda ticker: __get_df_for_ticker(data_dir, ticker), TICKERS), TICKERS)
