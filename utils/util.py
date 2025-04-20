@@ -7,7 +7,7 @@ import line_profiler
 import numpy as np
 import pandas as pd
 from binance_historical_data import BinanceDataDumper
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler
 from ta import trend, momentum
 
 OHLC_COLUMNS = ["Open", "High", "Low", "Close"]
@@ -23,12 +23,6 @@ TICKERS = [
 ]
 
 BINANCE_DATA_START_DATE = datetime.date(2025, 1, 1)
-
-
-class MultiScaler:
-    def __init__(self, min_max: MinMaxScaler, std: StandardScaler):
-        self.min_max = min_max
-        self.std = std
 
 
 @line_profiler.profile
@@ -51,15 +45,13 @@ def preprocess_make_ohlc_relative(df: pd.DataFrame):
 @line_profiler.profile
 def scale_dataframe(df_all: pd.DataFrame, scaler=None):
     if scaler is None:
-        scaler = MultiScaler(
-            MinMaxScaler(feature_range=(-1, 1), copy=False), StandardScaler(copy=False)
-        )
-        df_multi_scaled = scaler.min_max.fit_transform(scaler.std.fit_transform(df_all))
+        scaler = RobustScaler(copy=False)
+        df_scaled = scaler.fit_transform(df_all)
     else:
-        df_multi_scaled = scaler.min_max.transform(scaler.std.transform(df_all))
+        df_scaled = scaler.transform(df_all)
 
     df_scaled = pd.DataFrame(
-        df_multi_scaled.copy(), columns=df_all.columns, index=df_all.index
+        df_scaled.copy(), columns=df_all.columns, index=df_all.index
     )
 
     return df_scaled, scaler
@@ -67,32 +59,37 @@ def scale_dataframe(df_all: pd.DataFrame, scaler=None):
 
 @line_profiler.profile
 def __full_handle_tickers(df_tickers, sl=1, tp=1):
-    datasets = []
+    results = []
 
-    for df_ticker, _ in df_tickers:
+    for i, (df_ticker, ticker_name) in enumerate(df_tickers):
+        # Process OHLC data
         dataset = df_ticker.loc[:, OHLC_COLUMNS].astype(np.float32)
         dataset.index = pd.to_datetime(df_ticker["Open time"], unit="us")
+
+        # Add features
         dataset_with_features = preprocess_add_features(
             pd.DataFrame(dataset, columns=OHLC_COLUMNS)
         )
-        datasets.append((dataset_with_features, preprocess_make_ohlc_relative(dataset_with_features)))
 
-    _, combined_scaler = scale_dataframe(pd.concat([relative_df for _, relative_df in datasets]))
+        # Make relative
+        preprocessed_dataset = preprocess_make_ohlc_relative(dataset_with_features)
 
-    results = []
-    for i, (pristine_dataset, preprocessed_dataset) in enumerate(datasets):
-        df_scaled, _ = scale_dataframe(preprocessed_dataset, combined_scaler)
+        # Scale individually
+        df_scaled, individual_scaler = scale_dataframe(preprocessed_dataset)
 
-        labels = generate_labels_for_supervised(pristine_dataset.iloc[1:], sl, tp)
+        # Generate labels
+        labels = generate_labels_for_supervised(dataset_with_features.iloc[1:], sl, tp)
 
-        results.append((df_scaled, pristine_dataset, labels, combined_scaler, df_tickers[i][1]))
+        # Store results
+        results.append((df_scaled, dataset_with_features, labels, individual_scaler, ticker_name))
 
     return results
 
 
 @line_profiler.profile
 def generate_labels_for_supervised(pristine, sl, tp):
-    LOOKAHEAD_STEPS = 256
+    lookahead_steps = 256
+
     close_prices = pristine['Close'].to_numpy()
     ticker_labels = np.zeros(len(close_prices), dtype=int)
 
@@ -102,16 +99,16 @@ def generate_labels_for_supervised(pristine, sl, tp):
         tp_price = take_profit_price(current_price, tp)
 
         # Limit future prices to the next 256 timesteps
-        future_prices = close_prices[i + 1:i + 1 + LOOKAHEAD_STEPS]
+        future_prices = close_prices[i + 1:i + 1 + lookahead_steps]
 
         # Find the first occurrence where stop loss or take profit is triggered
         sl_triggered = np.where(future_prices <= sl_price)[0]
         tp_triggered = np.where(future_prices >= tp_price)[0]
 
-        if tp_triggered.size > 0 and (sl_triggered.size == 0 or tp_triggered[0] < sl_triggered[0]):
-            ticker_labels[i] = 1
-        elif sl_triggered.size > 0:
-            ticker_labels[i] = 0
+        if np.any(tp_triggered):
+            first_tp_idx = np.argmax(tp_triggered)
+            if not np.any(sl_triggered) or first_tp_idx < np.argmax(sl_triggered):
+                ticker_labels[i] = 1
 
     return pd.DataFrame(ticker_labels, index=pristine.index, columns=['Label'])
 
@@ -148,13 +145,13 @@ def split_tickers_train_test(df_tickers, last_days):
     return df_tickers_train, df_tickers_test
 
 
-def __invert_preprocess(original_start, scaler: MultiScaler, df):
+def __invert_preprocess(original_start, scaler: RobustScaler, df):
     df = df.copy()
 
     original_start = original_start[OHLC_COLUMNS].to_numpy()
     # Invert MinMax scaling for all columns
     df_inv_scaled = pd.DataFrame(
-        scaler.std.inverse_transform(scaler.min_max.inverse_transform(df.to_numpy())),
+        scaler.inverse_transform(df.to_numpy()),
         columns=df.columns,
         index=df.index,
     )
