@@ -317,7 +317,7 @@ def load_pickle(filename):
         return pickle.load(file)
 
 
-def download_and_process_data_if_available(data_dir, reload=False, need_download=True):
+def download_and_process_data_if_available(data_dir, reload=False, need_download=True, sl=1, tp=1):
     # Check if the processed data already exists
     cache_path = f"{data_dir}/df_tickers.pkl"
     if os.path.exists(cache_path) and not reload:
@@ -326,7 +326,7 @@ def download_and_process_data_if_available(data_dir, reload=False, need_download
     else:
         print("Downloading and processing data")
         df_tickers = __download_data(data_dir, need_download)
-        df_tickers_processed = __full_handle_tickers(df_tickers)
+        df_tickers_processed = __full_handle_tickers(df_tickers, sl, tp)
         save_pickle(df_tickers_processed, cache_path)
         return df_tickers_processed
 
