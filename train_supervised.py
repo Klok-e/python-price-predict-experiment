@@ -61,7 +61,7 @@ def load_model(model, model_path):
 def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_tickers_test, window_size,
                            computed_data_dir, model_name, epochs=10,
                            batch_size=4096, learning_rate=0.0001, log_interval=100, save_model=False,
-                           continue_training=True, test_prediction_threshold=0.5):
+                           continue_training=True):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     feature_size = df_tickers_train[0][0].shape[1]
@@ -70,11 +70,8 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
     train_dataset = PriceDataset(df_tickers_train, window_size)
     test_dataset = PriceDataset(df_tickers_test, window_size)
 
-    # sample_weights_train = calculate_sample_weights(df_tickers_train, window_size)
-    # sampler_train = WeightedRandomSampler(sample_weights_train, len(train_dataset))
-
     # Create dataloaders
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size)#, sampler=sampler_train)
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size)
 
     log_dir = f"{computed_data_dir}/tensorboard/"
@@ -88,7 +85,8 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
         if continue_training:
             model = load_model(model, model_save_path)
 
-        criterion = nn.BCELoss()
+        # Change to regression loss: Mean Squared Error
+        criterion = nn.MSELoss()
         optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
         scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=1)
 
@@ -123,7 +121,6 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                     total_test_loss = 0
                     all_labels = []
                     all_predictions = []
-                    all_probs = []
 
                     with torch.no_grad():
                         for inputs, labels in test_dataloader:
@@ -132,34 +129,34 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                             loss = criterion(outputs, labels)
                             total_test_loss += loss.item()
 
-                            # Calculate predictions
-                            predictions = (outputs > test_prediction_threshold).float()
-
-                            # Store labels, probabilities, and predictions
+                            # Store labels and predictions for metrics
                             all_labels.extend(labels.cpu().numpy())
-                            all_probs.extend(outputs.cpu().numpy())
-                            all_predictions.extend(predictions.cpu().numpy())
+                            all_predictions.extend(outputs.cpu().numpy())
 
-                    # Calculate additional metrics
-                    test_accuracy = (np.array(all_predictions) == np.array(all_labels)).mean()
-                    test_roc_auc = roc_auc_score(all_labels, all_probs)
-                    test_precision = precision_score(all_labels, all_predictions, average='binary', zero_division=0)
-                    test_recall = recall_score(all_labels, all_predictions, average='binary')
-                    test_f1 = f1_score(all_labels, all_predictions, average='binary')
+                    # Calculate regression metrics
+                    from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
+                    mse = mean_squared_error(all_labels, all_predictions)
+                    mae = mean_absolute_error(all_labels, all_predictions)
+                    r2 = r2_score(all_labels, all_predictions)
+
+                    # For monitoring trade signal distribution
+                    prediction_histogram = np.histogram(all_predictions, bins=10, range=(0.0, 1.0))[0]
 
                     # Log metrics
                     writer.add_scalar("test/Loss", total_test_loss / len(test_dataloader),
                                       epoch * len(train_dataloader) + batch_idx)
-                    writer.add_scalar("test/Accuracy", test_accuracy,
+                    writer.add_scalar("test/MSE", mse,
                                       epoch * len(train_dataloader) + batch_idx)
-                    writer.add_scalar("test/ROC AUC", test_roc_auc,
+                    writer.add_scalar("test/MAE", mae,
                                       epoch * len(train_dataloader) + batch_idx)
-                    writer.add_scalar("test/Precision", test_precision,
+                    writer.add_scalar("test/R2", r2,
                                       epoch * len(train_dataloader) + batch_idx)
-                    writer.add_scalar("test/Recall", test_recall,
-                                      epoch * len(train_dataloader) + batch_idx)
-                    writer.add_scalar("test/F1 Score", test_f1,
-                                      epoch * len(train_dataloader) + batch_idx)
+
+                    # Log prediction distribution
+                    for i, count in enumerate(prediction_histogram):
+                        writer.add_scalar(f"test/Pred_Bin_{i * 0.1:.1f}-{(i + 1) * 0.1:.1f}", count,
+                                          epoch * len(train_dataloader) + batch_idx)
 
                     if save_model:
                         create_dir_if_not_exists(model_save_path)
