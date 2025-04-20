@@ -91,7 +91,7 @@ def generate_labels_for_supervised(pristine, sl, tp):
     lookahead_steps = 256
 
     close_prices = pristine['Close'].to_numpy()
-    ticker_labels = np.zeros(len(close_prices), dtype=int)
+    ticker_labels = np.zeros(len(close_prices), dtype=np.float32)
 
     for i in range(len(close_prices) - 1):
         current_price = close_prices[i]
@@ -101,14 +101,13 @@ def generate_labels_for_supervised(pristine, sl, tp):
         # Limit future prices to the next 256 timesteps
         future_prices = close_prices[i + 1:i + 1 + lookahead_steps]
 
-        # Find the first occurrence where stop loss or take profit is triggered
-        sl_triggered = np.where(future_prices <= sl_price)[0]
-        tp_triggered = np.where(future_prices >= tp_price)[0]
+        sl_triggered = np.sum(future_prices <= sl_price)
+        tp_triggered = np.sum(future_prices >= tp_price)
 
-        if np.any(tp_triggered):
-            first_tp_idx = np.argmax(tp_triggered)
-            if not np.any(sl_triggered) or first_tp_idx < np.argmax(sl_triggered):
-                ticker_labels[i] = 1
+        if sl_triggered + tp_triggered == 0:
+            ticker_labels[i] = 0.5
+        else:
+            ticker_labels[i] = tp_triggered / (tp_triggered + sl_triggered)
 
     return pd.DataFrame(ticker_labels, index=pristine.index, columns=['Label'])
 
