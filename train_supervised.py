@@ -32,6 +32,8 @@ class PriceDataset(Dataset):
                 return data_window, label_value
             cumulative_length += num_samples
 
+        return None
+
 
 def calculate_class_weights(labels):
     class_counts = np.bincount(labels)

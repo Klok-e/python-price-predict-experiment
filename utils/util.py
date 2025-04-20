@@ -47,6 +47,7 @@ def preprocess_make_ohlc_relative(df: pd.DataFrame):
 
     return df_all
 
+
 @line_profiler.profile
 def scale_dataframe(df_all: pd.DataFrame, scaler=None):
     if scaler is None:
@@ -130,12 +131,13 @@ def split_tickers_train_test(df_tickers, last_days):
             df_tickers,
         )
     )
+
     df_tickers_test = list(
         map(
             lambda ticker: (
-                ticker[0].loc[last_date:],
-                ticker[1].loc[last_date:],
-                ticker[2].loc[last_date:],
+                ticker[0].loc[(last_date + pd.Timedelta(seconds=1)):],  # Add 1 second to exclude last_date
+                ticker[1].loc[(last_date + pd.Timedelta(seconds=1)):],
+                ticker[2].loc[(last_date + pd.Timedelta(seconds=1)):],
                 ticker[3],
                 ticker[4],
             ),
