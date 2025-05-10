@@ -15,8 +15,7 @@ def run_backtest_on_all_tickers(
 ):
     sum_equity = None
     trades = 0
-    for _, df, scaler, name in df_tickers:
-        df = df.read()
+    for _, df, _, scaler, name in df_tickers:
         start = df.index.max() - pd.Timedelta(days=time_delta_days)
         end = df.index.max()
 

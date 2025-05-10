@@ -1,4 +1,6 @@
+import numpy as np
 import pandas as pd
+import torch
 from backtesting import Backtest, Strategy
 from line_profiler import profile
 from sklearn.preprocessing import RobustScaler
@@ -31,14 +33,14 @@ def create_buy_and_hold_strategy(data: pd.DataFrame, start: str, end: str):
 
 
 def create_backtest_model_with_data(
-        rl_model,
+        model,
         data: pd.DataFrame,
         scaler,
         start: str,
         end: str,
         model_in_observations: int,
         print_actions=False,
-        confidence_threshold = 0.8
+        confidence_threshold=0.8
 ):
     skip_steps = 1024 + model_in_observations
 
@@ -62,20 +64,22 @@ def create_backtest_model_with_data(
 
                 # cheating to improve performance
                 preprocessed, _ = scale_dataframe(preprocess_make_ohlc_relative(df), scaler)
-                observation = preprocessed.tail(model_in_observations)
-                curr_close = df[0]["Close"]
+                observation = preprocessed.tail(model_in_observations).to_numpy(dtype=np.float32).reshape(1,
+                                                                                                          model_in_observations,
+                                                                                                          -1)
+                curr_close = df.iloc[-1]["Close"]
 
-                action, _ = rl_model.predict(observation, deterministic=True)
-                if action == 1 and self.buy_price is None:
-                    self.current_order = self.buy(
-                        sl=stop_loss_price(curr_close, 0.4),
-                        tp=take_profit_price(curr_close, 0.4)
-                    )
+                signal = model(torch.from_numpy(observation))
+                if signal > confidence_threshold and self.buy_price is None:
+                    self.current_order = self.buy()
 
                     self.buy_price = curr_close
                     if print_actions:
                         print(f"[{df.index.values[-1]}] bought at {self.buy_price}")
-                if self.buy_price is not None and self.current_order.parent_trade.exit_time is not None:
+
+                if self.buy_price is not None and (stop_loss_price(self.buy_price, 0.4) >= curr_close or curr_close >= take_profit_price(self.buy_price, 0.4)):
+                    self.sell()
+
                     if print_actions:
                         commission = 0.001
                         sell_fee = curr_close * (1 - commission)
