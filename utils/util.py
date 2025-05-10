@@ -91,7 +91,7 @@ def generate_labels_for_supervised(pristine, sl, tp):
     lookahead_steps = 256
 
     close_prices = pristine['Close'].to_numpy()
-    ticker_labels = np.zeros(len(close_prices), dtype=np.float32)
+    ticker_labels = np.zeros(len(close_prices), dtype=int)
 
     for i in range(len(close_prices) - 1):
         current_price = close_prices[i]
@@ -104,10 +104,8 @@ def generate_labels_for_supervised(pristine, sl, tp):
         sl_triggered = np.sum(future_prices <= sl_price)
         tp_triggered = np.sum(future_prices >= tp_price)
 
-        if sl_triggered + tp_triggered == 0:
-            ticker_labels[i] = 0.5
-        else:
-            ticker_labels[i] = tp_triggered / (tp_triggered + sl_triggered)
+        if tp_triggered > sl_triggered:
+            ticker_labels[i] = 1
 
     return pd.DataFrame(ticker_labels, index=pristine.index, columns=['Label'])
 
