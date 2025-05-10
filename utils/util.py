@@ -15,7 +15,7 @@ OHLC_COLUMNS = ["Open", "High", "Low", "Close"]
 OBS_OTHER = "other"
 OBS_PRICES_SEQUENCE = "prices_sequence"
 
-TICKERS = [
+DEFAULT_TICKERS = [
     "NEARUSDT",
     "SOLUSDT",
     "ETHUSDT",
@@ -247,7 +247,7 @@ def test_orig_val(dataset):
     )
 
 
-def __download_data(data_dir, need_download):
+def __download_data(data_dir, need_download, tickers):
     if need_download:
         data_dumper = BinanceDataDumper(
             path_dir_where_to_dump=f"{data_dir}/",
@@ -258,10 +258,10 @@ def __download_data(data_dir, need_download):
 
         print(data_dumper.get_list_all_trading_pairs())
 
-        data_dumper.dump_data(tickers=TICKERS, date_start=BINANCE_DATA_START_DATE, is_to_update_existing=True)
+        data_dumper.dump_data(tickers=tickers, date_start=BINANCE_DATA_START_DATE, is_to_update_existing=True)
 
     return list(
-        zip(map(lambda ticker: __get_df_for_ticker(data_dir, ticker), TICKERS), TICKERS)
+        zip(map(lambda ticker: __get_df_for_ticker(data_dir, ticker), tickers), tickers)
     )
 
 
@@ -313,15 +313,18 @@ def load_pickle(filename):
         return pickle.load(file)
 
 
-def download_and_process_data_if_available(data_dir, reload=False, need_download=True, sl=1, tp=1):
+def download_and_process_data_if_available(data_dir, reload=False, need_download=True, sl=1, tp=1, tickers=None):
     # Check if the processed data already exists
+    if tickers is None:
+        tickers = DEFAULT_TICKERS
+
     cache_path = f"{data_dir}/df_tickers.pkl"
     if os.path.exists(cache_path) and not reload:
         print("Loading data from cache")
         return load_pickle(cache_path)
     else:
         print("Downloading and processing data")
-        df_tickers = __download_data(data_dir, need_download)
+        df_tickers = __download_data(data_dir, need_download, tickers)
         df_tickers_processed = __full_handle_tickers(df_tickers, sl, tp)
         save_pickle(df_tickers_processed, cache_path)
         return df_tickers_processed
