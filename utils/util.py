@@ -201,52 +201,6 @@ def preprocess_add_features(df):
     return df
 
 
-def test_preprocess_invert_preprocess(original_df):
-    from sklearn.metrics import mean_absolute_error
-
-    preprocessed_df, scaler = preprocess_scale(original_df)
-
-    # Assume that 'original_start' is the first row of the original DataFrame
-    original_start = original_df.iloc[0]
-
-    inverted_df = __invert_preprocess(original_start, scaler, preprocessed_df)
-
-    mae_list = []
-    for col in original_df.columns:
-        # Start from the second row of the original_df for comparison
-        mae = mean_absolute_error(original_df.iloc[1:][col], inverted_df[col])
-        mae_list.append(mae)
-        print(f"Mean Absolute Error for {col}: {mae}")
-
-    avg_mae = sum(mae_list) / len(mae_list)
-    print(f"Average MAE: {avg_mae}")
-
-    return avg_mae < 1e-9
-
-
-def test_orig_val(dataset):
-    # The original_start passed to invert_preprocess() must be the first value in the corresponding
-    # original DataFrame segment. For the first range, that's range_orig.iloc[0].
-    # For the second range, it's range_orig.iloc[500].
-
-    range_orig = dataset.iloc[2000:3000]
-    range_preproc, s = preprocess_scale(range_orig)
-
-    # Inverted for the whole preprocessed range
-    range1_inv = __invert_preprocess(range_orig.iloc[0], s, range_preproc)
-
-    # Inverted for the latter part of the preprocessed range
-    range2_inv = __invert_preprocess(range_orig.iloc[500], s, range_preproc.iloc[500:])
-
-    # Due to floating point errors, equality may not be exact. So you might use pd.testing.assert_frame_equal
-    # with the check_exact=False parameter
-    pd.testing.assert_frame_equal(
-        range1_inv.iloc[500:].reset_index(drop=True),
-        range2_inv.reset_index(drop=True),
-        check_exact=False,
-    )
-
-
 def __download_data(data_dir, need_download, tickers):
     if need_download:
         data_dumper = BinanceDataDumper(

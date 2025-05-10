@@ -1,9 +1,10 @@
 import pandas as pd
 from backtesting import Backtest, Strategy
 from line_profiler import profile
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import RobustScaler
 
-from utils.util import calculate_observation, preprocess_add_features, preprocess_scale, stop_loss_price, take_profit_price
+from utils.util import preprocess_add_features, preprocess_make_ohlc_relative, scale_dataframe, \
+    stop_loss_price, take_profit_price
 
 
 class BuyAndHold(Strategy):
@@ -30,13 +31,14 @@ def create_buy_and_hold_strategy(data: pd.DataFrame, start: str, end: str):
 
 
 def create_backtest_model_with_data(
-    rl_model,
-    data: pd.DataFrame,
-    scaler: MinMaxScaler,
-    start: str,
-    end: str,
-    model_in_observations: int,
-    print_actions=False,
+        rl_model,
+        data: pd.DataFrame,
+        scaler,
+        start: str,
+        end: str,
+        model_in_observations: int,
+        print_actions=False,
+        confidence_threshold = 0.8
 ):
     skip_steps = 1024 + model_in_observations
 
@@ -59,13 +61,9 @@ def create_backtest_model_with_data(
                 df.drop(columns=["Volume"], inplace=True)
 
                 # cheating to improve performance
-                preprocessed, _ = preprocess_scale(df, scaler)
-                # preprocessed = backtest_prepro_dataset[self.data.index[0]:self.data.index[-1]]
-                observation, curr_close, _ = calculate_observation(
-                    preprocessed.tail(model_in_observations),
-                    df.tail(model_in_observations),
-                    self.buy_price,
-                )
+                preprocessed, _ = scale_dataframe(preprocess_make_ohlc_relative(df), scaler)
+                observation = preprocessed.tail(model_in_observations)
+                curr_close = df[0]["Close"]
 
                 action, _ = rl_model.predict(observation, deterministic=True)
                 if action == 1 and self.buy_price is None:
