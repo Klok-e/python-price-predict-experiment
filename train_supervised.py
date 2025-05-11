@@ -96,6 +96,8 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
             model.train()
             train_loss = 0
             epoch_train_loss = 0
+            interval_train_labels = []
+            interval_train_predictions = []
 
             for batch_idx, (inputs, labels) in enumerate(train_dataloader):
                 inputs, labels = inputs.to(device), labels.to(device)
@@ -109,7 +111,26 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                 loss.backward()
                 optimizer.step()
 
+                with torch.no_grad():
+                    preds = (outputs > test_prediction_threshold).float()
+                    interval_train_labels.extend(labels.cpu().numpy())
+                    interval_train_predictions.extend(preds.cpu().numpy())
+
                 if (batch_idx + 1) % log_interval == 0:
+                    # -------- train accuracy ----------
+                    train_accuracy = (np.array(interval_train_predictions) == np.array(interval_train_labels)).mean()
+                    writer.add_scalar(
+                        "train/Accuracy",
+                        train_accuracy,
+                        epoch * len(train_dataloader) + batch_idx
+                    )
+                    # reset accumulators for next interval
+                    interval_train_labels.clear()
+                    interval_train_predictions.clear()
+
+                    writer.add_scalar("train/Loss", train_loss / log_interval,
+                                      epoch * len(train_dataloader) + batch_idx)
+
                     writer.add_scalar("train/Loss", train_loss / log_interval,
                                       epoch * len(train_dataloader) + batch_idx)
 
