@@ -2,7 +2,7 @@ from torch import nn
 
 
 class PricePredictorModel(nn.Module):
-    def __init__(self, window_size, feature_size, linear_arch=None):
+    def __init__(self, window_size, feature_size, linear_arch=None, dropout: float = 0.25):
         super(PricePredictorModel, self).__init__()
 
         if linear_arch is None:
@@ -10,16 +10,20 @@ class PricePredictorModel(nn.Module):
 
         input_size = window_size * feature_size
 
-        # Linear layers for the feedforward network
-        self.linear_layers = nn.Sequential(
-            *[nn.Sequential(nn.Linear(in_f, out_f), nn.LeakyReLU())
-              for in_f, out_f in zip([input_size] + linear_arch[:-1], linear_arch)]
-        )
+        # Linear layers for the feed-forward network (Linear → LeakyReLU → Dropout)
+        layers = []
+        in_features = input_size
+        for out_features in linear_arch:
+            layers.extend([
+                nn.Linear(in_features, out_features),
+                nn.LeakyReLU(),
+                nn.Dropout(p=dropout)
+            ])
+            in_features = out_features
+        self.linear_layers = nn.Sequential(*layers)
 
         # Output layer to produce a single output
         self.output_layer = nn.Linear(linear_arch[-1], 1)
-        # Sigmoid activation for the final output
-        self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
         # Flatten the input
@@ -28,8 +32,8 @@ class PricePredictorModel(nn.Module):
         x = self.linear_layers(x)
         # Pass through the output layer
         x = self.output_layer(x)
-        # Apply sigmoid activation
-        return self.sigmoid(x)
+
+        return x
 
 
 class LSTMPricePredictorModel(nn.Module):

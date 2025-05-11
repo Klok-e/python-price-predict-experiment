@@ -13,20 +13,31 @@ from utils.util import create_dir_if_not_exists
 
 
 class PriceDataset(Dataset):
-    def __init__(self, df_tickers, window_size):
+    """
+    Produces overlapping (or strided) sliding windows across
+    every ticker’s dataframe.
+
+    stride = 1  → classic “next-timestep” overlap
+    stride = k  → windows start every k timesteps
+    """
+    def __init__(self, df_tickers, window_size: int, stride: int = 1):
         self.window_size = window_size
+        self.stride = stride
         self.scaled_data = [item[0] for item in df_tickers]
         self.labels = [item[2] for item in df_tickers]
 
     def __len__(self):
-        return sum(len(data) - self.window_size + 1 for data in self.scaled_data)
+        return sum(
+            (len(data) - self.window_size) // self.stride + 1
+            for data in self.scaled_data
+        )
 
     def __getitem__(self, idx):
         cumulative_length = 0
         for data, label in zip(self.scaled_data, self.labels):
-            num_samples = len(data) - self.window_size + 1
+            num_samples = (len(data) - self.window_size) // self.stride + 1
             if idx < cumulative_length + num_samples:
-                local_idx = idx - cumulative_length
+                local_idx = (idx - cumulative_length) * self.stride
                 data_window = data.iloc[local_idx:local_idx + self.window_size].to_numpy(dtype=np.float32)
                 label_value = label.iloc[local_idx + self.window_size - 1].to_numpy(dtype=np.float32)
                 return data_window, label_value
@@ -36,13 +47,17 @@ class PriceDataset(Dataset):
 
 
 def calculate_class_weights(labels):
+    labels = labels.astype(np.int32, copy=False)
     class_counts = np.bincount(labels)
     class_weights = len(labels) / class_counts
     return class_weights
 
 
-def calculate_sample_weights(df_tickers, window_size):
-    all_labels = np.concatenate([ticker[2][window_size - 1:] for ticker in df_tickers]).reshape(-1)
+def calculate_sample_weights(df_tickers, window_size: int, stride: int = 1):
+    # pick labels at the same stride used by the dataset
+    all_labels = np.concatenate([
+        ticker[2].iloc[window_size - 1 :: stride] for ticker in df_tickers
+    ]).reshape(-1)
 
     # Calculate class weights
     class_weights = calculate_class_weights(all_labels)
@@ -61,17 +76,19 @@ def load_model(model, model_path):
 def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_tickers_test, window_size,
                            computed_data_dir, model_name, epochs=10,
                            batch_size=4096, learning_rate=0.0001, log_interval=100, save_model=False,
-                           continue_training=True, test_prediction_threshold=0.5):
+                           continue_training=True, test_prediction_threshold=0.5,
+                           window_stride: int = 8, random_sampler_samples_percent=0.5):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     feature_size = df_tickers_train[0][0].shape[1]
 
     # Create datasets
-    train_dataset = PriceDataset(df_tickers_train, window_size)
-    test_dataset = PriceDataset(df_tickers_test, window_size)
+    train_dataset = PriceDataset(df_tickers_train, window_size, stride=window_stride)
+    test_dataset = PriceDataset(df_tickers_test, window_size, stride=window_stride)
 
-    sample_weights_train = calculate_sample_weights(df_tickers_train, window_size)
-    sampler_train = WeightedRandomSampler(sample_weights_train, len(train_dataset))
+    sample_weights_train = calculate_sample_weights(df_tickers_train, window_size, stride=window_stride)
+    sampler_train = WeightedRandomSampler(sample_weights_train,
+                                          int(random_sampler_samples_percent * len(train_dataset)))
 
     # Create dataloaders
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler_train)
@@ -88,8 +105,8 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
         if continue_training:
             model = load_model(model, model_save_path)
 
-        criterion = nn.BCELoss()
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
+        criterion = nn.BCEWithLogitsLoss()
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
         scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=1)
 
         for epoch in range(epochs):
@@ -103,8 +120,8 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                 inputs, labels = inputs.to(device), labels.to(device)
 
                 optimizer.zero_grad()
-                outputs = model(inputs)
-                loss = criterion(outputs, labels)
+                logits = model(inputs)
+                loss = criterion(logits, labels)
 
                 train_loss += loss.item()
                 epoch_train_loss += loss.item()
@@ -112,7 +129,8 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                 optimizer.step()
 
                 with torch.no_grad():
-                    preds = (outputs > test_prediction_threshold).float()
+                    probs = torch.sigmoid(logits)
+                    preds = (probs > test_prediction_threshold).float()
                     interval_train_labels.extend(labels.cpu().numpy())
                     interval_train_predictions.extend(preds.cpu().numpy())
 
@@ -127,9 +145,6 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                     # reset accumulators for next interval
                     interval_train_labels.clear()
                     interval_train_predictions.clear()
-
-                    writer.add_scalar("train/Loss", train_loss / log_interval,
-                                      epoch * len(train_dataloader) + batch_idx)
 
                     writer.add_scalar("train/Loss", train_loss / log_interval,
                                       epoch * len(train_dataloader) + batch_idx)
@@ -149,16 +164,17 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                     with torch.no_grad():
                         for inputs, labels in test_dataloader:
                             inputs, labels = inputs.to(device), labels.to(device)
-                            outputs = model(inputs)
-                            loss = criterion(outputs, labels)
+                            logits = model(inputs)
+                            loss = criterion(logits, labels)
                             total_test_loss += loss.item()
 
                             # Calculate predictions
-                            predictions = (outputs > test_prediction_threshold).float()
+                            probs = torch.sigmoid(logits)
+                            predictions = (probs > test_prediction_threshold).float()
 
                             # Store labels, probabilities, and predictions
                             all_labels.extend(labels.cpu().numpy())
-                            all_probs.extend(outputs.cpu().numpy())
+                            all_probs.extend(probs.cpu().numpy())
                             all_predictions.extend(predictions.cpu().numpy())
 
                     # Calculate additional metrics
