@@ -50,10 +50,13 @@ def sharpe_ratio(E_Rp, R_f, sigma_P):
     return (E_Rp - R_f) / sigma_P
 
 
-def calculate_metrics(equity, trades_count, start_cash):
+CRYPTO_MINUTES_IN_YEAR = 365 * 24 * 60
+
+
+def calculate_metrics(equity, trades_count, start_cash, minutes_in_year=CRYPTO_MINUTES_IN_YEAR):
     # Calculate metrics
     P_end = equity.iloc[-1]
-    P_0 = equity.iloc[0]
+    P_0 = start_cash
     E_Rp = equity.pct_change().mean()  # Expected return
     sigma_P = equity.pct_change().std()  # Standard deviation of returns
 
@@ -62,15 +65,13 @@ def calculate_metrics(equity, trades_count, start_cash):
     A_y = np.roll(A_x, 1)  # Shifted assets for comparison
     A_y[0] = start_cash  # Initial asset value for the first calculation
 
-    # Assuming 252 trading days in a year and 6.5 trading hours per day
-    minutes_in_trading_year = 252 * 6.5 * 60
     # Your risk-free rate, annualized
     annual_risk_free_rate = 0.00
     # Convert the annual risk-free rate to a per-minute rate
-    R_f = (1 + annual_risk_free_rate) ** (1 / minutes_in_trading_year) - 1
+    R_f = (1 + annual_risk_free_rate) ** (1 / minutes_in_year) - 1
     # Annualize the expected return and standard deviation
-    E_Rp = E_Rp * np.sqrt(minutes_in_trading_year)
-    sigma_P = sigma_P * np.sqrt(minutes_in_trading_year)
+    E_Rp = E_Rp * np.sqrt(minutes_in_year)
+    sigma_P = sigma_P * np.sqrt(minutes_in_year)
 
     cr = cumulative_return(P_end, P_0)
     mer = max_earning_rate(A_x, A_y)

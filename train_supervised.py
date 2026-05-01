@@ -120,6 +120,33 @@ def _safe_binary_metrics(labels, probs, predictions):
     return metrics
 
 
+def evaluate_supervised_model(model, dataloader, criterion, device, prediction_threshold):
+    model.eval()
+    total_loss = 0
+    batches = 0
+    all_labels = []
+    all_predictions = []
+    all_probs = []
+
+    with torch.no_grad():
+        for inputs, labels in dataloader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            logits = model(inputs)
+            loss = criterion(logits, labels)
+            total_loss += loss.item()
+            batches += 1
+
+            probs = torch.sigmoid(logits)
+            predictions = (probs > prediction_threshold).float()
+            all_labels.extend(labels.cpu().numpy())
+            all_probs.extend(probs.cpu().numpy())
+            all_predictions.extend(predictions.cpu().numpy())
+
+    metrics = _safe_binary_metrics(all_labels, all_probs, all_predictions)
+    metrics["loss"] = total_loss / batches if batches else np.nan
+    return metrics
+
+
 def load_model(model, model_path):
     if os.path.exists(model_path):
         print(f"Loading model from {model_path}")
@@ -133,7 +160,8 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                            computed_data_dir, model_name, epochs=10,
                            batch_size=4096, learning_rate=0.0001, log_interval=100, save_model=False,
                            continue_training=True, test_prediction_threshold=0.5,
-                           window_stride: int = 8, random_sampler_samples_percent=0.5):
+                           window_stride: int = 8, random_sampler_samples_percent=0.5,
+                           checkpoint_path=None, return_training_history=False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     feature_size = df_tickers_train[0][0].shape[1]
@@ -168,6 +196,10 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
         criterion = nn.BCEWithLogitsLoss()
         optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
         scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=1)
+        history = []
+        best_validation_loss = np.inf
+        best_epoch = None
+        best_checkpoint_path = checkpoint_path
 
         for epoch in range(epochs):
             model.train()
@@ -214,34 +246,16 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
 
                     train_loss = 0
 
-                    # Evaluate on test data
-                    model.eval()
-                    total_test_loss = 0
-                    all_labels = []
-                    all_predictions = []
-                    all_probs = []
-
-                    with torch.no_grad():
-                        for inputs, labels in test_dataloader:
-                            inputs, labels = inputs.to(device), labels.to(device)
-                            logits = model(inputs)
-                            loss = criterion(logits, labels)
-                            total_test_loss += loss.item()
-
-                            # Calculate predictions
-                            probs = torch.sigmoid(logits)
-                            predictions = (probs > test_prediction_threshold).float()
-
-                            # Store labels, probabilities, and predictions
-                            all_labels.extend(labels.cpu().numpy())
-                            all_probs.extend(probs.cpu().numpy())
-                            all_predictions.extend(predictions.cpu().numpy())
-
-                    # Calculate additional metrics
-                    test_metrics = _safe_binary_metrics(all_labels, all_probs, all_predictions)
+                    test_metrics = evaluate_supervised_model(
+                        model,
+                        test_dataloader,
+                        criterion,
+                        device,
+                        test_prediction_threshold,
+                    )
 
                     # Log metrics
-                    writer.add_scalar("test/Loss", total_test_loss / len(test_dataloader),
+                    writer.add_scalar("test/Loss", test_metrics["loss"],
                                       epoch * len(train_dataloader) + batch_idx)
                     writer.add_scalar("test/Accuracy", test_metrics["accuracy"],
                                       epoch * len(train_dataloader) + batch_idx)
@@ -261,7 +275,37 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                     model.train()
 
             scheduler.step(epoch_train_loss / len(train_dataloader))
+            epoch_train_loss = epoch_train_loss / len(train_dataloader)
+            validation_metrics = evaluate_supervised_model(
+                model,
+                test_dataloader,
+                criterion,
+                device,
+                test_prediction_threshold,
+            )
+            history.append({
+                "epoch": epoch,
+                "train_loss": epoch_train_loss,
+                "validation": validation_metrics,
+            })
+            if validation_metrics["loss"] < best_validation_loss:
+                best_validation_loss = validation_metrics["loss"]
+                best_epoch = epoch
+                if best_checkpoint_path is not None:
+                    create_dir_if_not_exists(best_checkpoint_path)
+                    torch.save(model.state_dict(), best_checkpoint_path)
 
-            print(f"epoch {epoch} ended; epoch training loss: {epoch_train_loss / len(train_dataloader)}")
+            print(f"epoch {epoch} ended; epoch training loss: {epoch_train_loss}")
 
+        if best_checkpoint_path is not None and os.path.exists(best_checkpoint_path):
+            model.load_state_dict(torch.load(best_checkpoint_path, weights_only=True))
+
+    training_summary = {
+        "best_epoch": best_epoch,
+        "best_validation_loss": best_validation_loss,
+        "checkpoint_path": best_checkpoint_path,
+        "history": history,
+    }
+    if return_training_history:
+        return model, training_summary
     return model

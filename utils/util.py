@@ -61,19 +61,20 @@ def _open_time_to_datetime(open_time):
     if pd.api.types.is_datetime64_any_dtype(open_time):
         return pd.to_datetime(open_time)
 
-    numeric_open_time = pd.to_numeric(open_time, errors="coerce")
-    median_open_time = numeric_open_time.dropna().median()
+    numeric_open_time = pd.Series(pd.to_numeric(open_time, errors="coerce"))
+    result = pd.Series(pd.NaT, index=numeric_open_time.index, dtype="datetime64[ns]")
+    unit_masks = [
+        (numeric_open_time >= 1e17, "ns"),
+        ((numeric_open_time >= 1e14) & (numeric_open_time < 1e17), "us"),
+        ((numeric_open_time >= 1e11) & (numeric_open_time < 1e14), "ms"),
+        (numeric_open_time < 1e11, "s"),
+    ]
 
-    if median_open_time > 1e17:
-        unit = "ns"
-    elif median_open_time > 1e14:
-        unit = "us"
-    elif median_open_time > 1e11:
-        unit = "ms"
-    else:
-        unit = "s"
+    for mask, unit in unit_masks:
+        if mask.any():
+            result.loc[mask] = pd.to_datetime(numeric_open_time.loc[mask], unit=unit, errors="coerce")
 
-    return pd.to_datetime(numeric_open_time, unit=unit)
+    return pd.DatetimeIndex(result)
 
 
 def validate_ohlc_bars(df: pd.DataFrame, ticker_name: str | None = None, frequency="1min"):
@@ -86,6 +87,8 @@ def validate_ohlc_bars(df: pd.DataFrame, ticker_name: str | None = None, frequen
         if "Open time" not in result.columns:
             raise ValueError(f"{ticker_name or 'ticker'} needs a DatetimeIndex or an Open time column")
         result.index = _open_time_to_datetime(result["Open time"])
+        if result.index.isna().any():
+            raise ValueError(f"{ticker_name or 'ticker'} has invalid Open time values")
 
     result[OHLC_COLUMNS] = result[OHLC_COLUMNS].apply(pd.to_numeric, errors="coerce")
 
@@ -420,31 +423,65 @@ def preprocess_add_features(df):
     return df
 
 
-def __download_data(data_dir, need_download, tickers):
-    if need_download:
-        if BinanceDataDumper is None:
-            raise RuntimeError("binance_historical_data is required for downloads")
+def download_ohlc_data(data_dir, tickers=None, start_date=BINANCE_DATA_START_DATE):
+    if tickers is None:
+        tickers = DEFAULT_TICKERS
+    if BinanceDataDumper is None:
+        raise RuntimeError("binance_historical_data is required for downloads")
 
-        data_dumper = BinanceDataDumper(
-            path_dir_where_to_dump=f"{data_dir}/",
-            asset_class="spot",  # spot, um, cm
-            data_type="klines",  # aggTrades, klines, trades
-            data_frequency="1m",
-        )
+    data_dumper = BinanceDataDumper(
+        path_dir_where_to_dump=f"{data_dir}/",
+        asset_class="spot",
+        data_type="klines",
+        data_frequency="1m",
+    )
+    data_dumper.dump_data(
+        tickers=tickers,
+        date_start=start_date,
+        is_to_update_existing=True,
+    )
+    return load_cached_ohlc_data(data_dir, tickers)
 
-        print(data_dumper.get_list_all_trading_pairs())
 
-        data_dumper.dump_data(tickers=tickers, date_start=BINANCE_DATA_START_DATE, is_to_update_existing=True)
-
-    return list(
+def load_cached_ohlc_data(data_dir, tickers=None):
+    if tickers is None:
+        tickers = DEFAULT_TICKERS
+    df_tickers = list(
         zip(map(lambda ticker: __get_df_for_ticker(data_dir, ticker), tickers), tickers)
     )
+    missing = [ticker for df, ticker in df_tickers if df.empty]
+    if missing:
+        raise FileNotFoundError(
+            f"No cached 1m Binance klines found for {missing} under {data_dir}. "
+            "Run download_data.py first."
+        )
+    return df_tickers
+
+
+def filter_tickers_by_start_date(df_tickers, start_date):
+    start = pd.Timestamp(start_date)
+    filtered = []
+    for df, ticker in df_tickers:
+        result = df.copy()
+        if not isinstance(result.index, pd.DatetimeIndex):
+            if "Open time" not in result.columns:
+                raise ValueError(f"{ticker} needs a DatetimeIndex or an Open time column")
+            result.index = _open_time_to_datetime(result["Open time"])
+        result = result.sort_index().loc[start:]
+        if result.empty:
+            raise ValueError(f"{ticker} has no cached rows at or after {start}")
+        filtered.append((result, ticker))
+    return filtered
+
+
+def __download_data(data_dir, need_download, tickers):
+    if need_download:
+        return download_ohlc_data(data_dir, tickers)
+
+    return load_cached_ohlc_data(data_dir, tickers)
 
 
 def __get_df_for_ticker(data_dir, ticker):
-    minute_klines_dir = f"{data_dir}/spot/monthly/klines/{ticker}/1m"
-    filenames = next(os.walk(minute_klines_dir), (None, None, []))[2]  # [] if no file
-
     columns = [
         "Open time",
         "Open",
@@ -461,11 +498,18 @@ def __get_df_for_ticker(data_dir, ticker):
     ]
 
     df = pd.DataFrame(columns=columns)
+    kline_dirs = [
+        f"{data_dir}/spot/monthly/klines/{ticker}/1m",
+        f"{data_dir}/spot/daily/klines/{ticker}/1m",
+    ]
 
-    for f in filenames:
-        new_df = pd.read_csv(f"{minute_klines_dir}/{f}", header=None, names=columns)
-        df = pd.concat([d for d in [df, new_df] if not d.empty], ignore_index=True)
+    for kline_dir in kline_dirs:
+        filenames = sorted(next(os.walk(kline_dir), (None, None, []))[2])
+        for f in filenames:
+            new_df = pd.read_csv(f"{kline_dir}/{f}", header=None, names=columns)
+            df = pd.concat([d for d in [df, new_df] if not d.empty], ignore_index=True)
     df = df.sort_values(by="Open time")
+    df = df.drop_duplicates(subset="Open time", keep="first")
     return df
 
 
