@@ -7,7 +7,21 @@ import torch.optim as optim
 from sklearn.metrics import roc_auc_score, precision_score, recall_score, f1_score
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
-from torch.utils.tensorboard import SummaryWriter
+try:
+    from torch.utils.tensorboard import SummaryWriter
+except ModuleNotFoundError:
+    class SummaryWriter:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def add_scalar(self, *args, **kwargs):
+            pass
 
 from utils.util import create_dir_if_not_exists
 
@@ -26,16 +40,18 @@ class PriceDataset(Dataset):
         self.scaled_data = [item[0] for item in df_tickers]
         self.labels = [item[2] for item in df_tickers]
 
+    def _num_samples(self, data):
+        if len(data) < self.window_size:
+            return 0
+        return (len(data) - self.window_size) // self.stride + 1
+
     def __len__(self):
-        return sum(
-            (len(data) - self.window_size) // self.stride + 1
-            for data in self.scaled_data
-        )
+        return sum(self._num_samples(data) for data in self.scaled_data)
 
     def __getitem__(self, idx):
         cumulative_length = 0
         for data, label in zip(self.scaled_data, self.labels):
-            num_samples = (len(data) - self.window_size) // self.stride + 1
+            num_samples = self._num_samples(data)
             if idx < cumulative_length + num_samples:
                 local_idx = (idx - cumulative_length) * self.stride
                 data_window = data.iloc[local_idx:local_idx + self.window_size].to_numpy(dtype=np.float32)
@@ -43,25 +59,65 @@ class PriceDataset(Dataset):
                 return data_window, label_value
             cumulative_length += num_samples
 
-        return None
+        raise IndexError(idx)
 
 
 def calculate_class_weights(labels):
     labels = labels.astype(np.int32, copy=False)
-    class_counts = np.bincount(labels)
-    class_weights = len(labels) / class_counts
+    class_counts = np.bincount(labels, minlength=2)
+    class_weights = np.zeros_like(class_counts, dtype=np.float64)
+    nonzero_classes = class_counts > 0
+    class_weights[nonzero_classes] = len(labels) / class_counts[nonzero_classes]
     return class_weights
 
 
-def calculate_sample_weights(df_tickers, window_size: int, stride: int = 1):
-    # pick labels at the same stride used by the dataset
-    all_labels = np.concatenate([
-        ticker[2].iloc[window_size - 1 :: stride] for ticker in df_tickers
-    ]).reshape(-1)
+def calculate_sample_weights(df_tickers, window_size: int, stride: int = 1, balance_tickers: bool = True):
+    if not balance_tickers:
+        all_labels = np.concatenate([
+            ticker[2].iloc[window_size - 1 :: stride] for ticker in df_tickers
+        ]).reshape(-1)
+        class_weights = calculate_class_weights(all_labels)
+        return np.array([class_weights[int(label)] for label in all_labels])
 
-    # Calculate class weights
-    class_weights = calculate_class_weights(all_labels)
-    return np.array([class_weights[int(label)] for label in all_labels])
+    sample_weights = []
+    non_empty_tickers = 0
+    per_ticker_labels = []
+    for ticker in df_tickers:
+        labels = ticker[2].iloc[window_size - 1 :: stride].to_numpy().reshape(-1).astype(np.int32)
+        if len(labels) == 0:
+            continue
+        non_empty_tickers += 1
+        per_ticker_labels.append(labels)
+
+    for labels in per_ticker_labels:
+        unique_labels, class_counts = np.unique(labels, return_counts=True)
+        class_count_by_label = dict(zip(unique_labels, class_counts))
+        ticker_mass = 1.0 / non_empty_tickers
+        class_mass = ticker_mass / len(unique_labels)
+        sample_weights.extend(class_mass / class_count_by_label[int(label)] for label in labels)
+
+    return np.array(sample_weights)
+
+
+def _safe_binary_metrics(labels, probs, predictions):
+    labels = np.array(labels).reshape(-1)
+    probs = np.array(probs).reshape(-1)
+    predictions = np.array(predictions).reshape(-1)
+
+    metrics = {
+        "accuracy": (predictions == labels).mean() if len(labels) else np.nan,
+        "roc_auc": np.nan,
+        "precision": np.nan,
+        "recall": np.nan,
+        "f1": np.nan,
+    }
+    if len(np.unique(labels)) == 2:
+        metrics["roc_auc"] = roc_auc_score(labels, probs)
+    if len(labels):
+        metrics["precision"] = precision_score(labels, predictions, average='binary', zero_division=0)
+        metrics["recall"] = recall_score(labels, predictions, average='binary', zero_division=0)
+        metrics["f1"] = f1_score(labels, predictions, average='binary', zero_division=0)
+    return metrics
 
 
 def load_model(model, model_path):
@@ -85,10 +141,14 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
     # Create datasets
     train_dataset = PriceDataset(df_tickers_train, window_size, stride=window_stride)
     test_dataset = PriceDataset(df_tickers_test, window_size, stride=window_stride)
+    if len(train_dataset) == 0:
+        raise ValueError("Training dataset has no samples; reduce window_size/stride or use more data")
+    if len(test_dataset) == 0:
+        raise ValueError("Test dataset has no samples; reduce window_size/stride or use more held-out data")
 
     sample_weights_train = calculate_sample_weights(df_tickers_train, window_size, stride=window_stride)
     sampler_train = WeightedRandomSampler(sample_weights_train,
-                                          int(random_sampler_samples_percent * len(train_dataset)))
+                                          max(1, int(random_sampler_samples_percent * len(train_dataset))))
 
     # Create dataloaders
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler_train)
@@ -178,24 +238,20 @@ def train_supervised_model(model_type, model_kwargs, df_tickers_train, df_ticker
                             all_predictions.extend(predictions.cpu().numpy())
 
                     # Calculate additional metrics
-                    test_accuracy = (np.array(all_predictions) == np.array(all_labels)).mean()
-                    test_roc_auc = roc_auc_score(all_labels, all_probs)
-                    test_precision = precision_score(all_labels, all_predictions, average='binary', zero_division=0)
-                    test_recall = recall_score(all_labels, all_predictions, average='binary')
-                    test_f1 = f1_score(all_labels, all_predictions, average='binary')
+                    test_metrics = _safe_binary_metrics(all_labels, all_probs, all_predictions)
 
                     # Log metrics
                     writer.add_scalar("test/Loss", total_test_loss / len(test_dataloader),
                                       epoch * len(train_dataloader) + batch_idx)
-                    writer.add_scalar("test/Accuracy", test_accuracy,
+                    writer.add_scalar("test/Accuracy", test_metrics["accuracy"],
                                       epoch * len(train_dataloader) + batch_idx)
-                    writer.add_scalar("test/ROC AUC", test_roc_auc,
+                    writer.add_scalar("test/ROC AUC", test_metrics["roc_auc"],
                                       epoch * len(train_dataloader) + batch_idx)
-                    writer.add_scalar("test/Precision", test_precision,
+                    writer.add_scalar("test/Precision", test_metrics["precision"],
                                       epoch * len(train_dataloader) + batch_idx)
-                    writer.add_scalar("test/Recall", test_recall,
+                    writer.add_scalar("test/Recall", test_metrics["recall"],
                                       epoch * len(train_dataloader) + batch_idx)
-                    writer.add_scalar("test/F1 Score", test_f1,
+                    writer.add_scalar("test/F1 Score", test_metrics["f1"],
                                       epoch * len(train_dataloader) + batch_idx)
 
                     if save_model:

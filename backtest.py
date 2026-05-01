@@ -2,11 +2,24 @@ import numpy as np
 import pandas as pd
 import torch
 from backtesting import Backtest, Strategy
-from line_profiler import profile
-from sklearn.preprocessing import RobustScaler
+try:
+    from line_profiler import profile
+except ModuleNotFoundError:
+    def profile(func):
+        return func
 
-from utils.util import preprocess_add_features, preprocess_make_ohlc_relative, scale_dataframe, \
+from utils.experiment import DEFAULT_TRADING_CONTRACT, TradingContract
+from utils.util import ensure_feature_columns, preprocess_make_ohlc_relative, scale_dataframe, \
     stop_loss_price, take_profit_price
+
+
+def predict_model_probability(model, observation: np.ndarray):
+    model_device = next(model.parameters()).device
+    input_tensor = torch.from_numpy(observation).to(model_device)
+    model.eval()
+    with torch.no_grad():
+        logits = model(input_tensor)
+        return torch.sigmoid(logits).detach().cpu().reshape(-1)[0].item()
 
 
 class BuyAndHold(Strategy):
@@ -21,14 +34,21 @@ class BuyAndHold(Strategy):
         pass
 
 
-def create_buy_and_hold_strategy(data: pd.DataFrame, start: str, end: str):
-    backtest_dataset = preprocess_add_features(data.loc[start:end])
+def create_buy_and_hold_strategy(
+        data: pd.DataFrame,
+        start: str,
+        end: str,
+        contract: TradingContract | None = None,
+        cash=1_000_000,
+):
+    contract = contract or DEFAULT_TRADING_CONTRACT
+    backtest_dataset = ensure_feature_columns(data.loc[start:end])
     return Backtest(
         backtest_dataset,
         BuyAndHold,
-        commission=0.001,
+        commission=contract.commission,
         exclusive_orders=True,
-        cash=1_000_000,
+        cash=cash,
     )
 
 
@@ -40,8 +60,13 @@ def create_backtest_model_with_data(
         end: str,
         model_in_observations: int,
         print_actions=False,
-        confidence_threshold=0.8
+        confidence_threshold=None,
+        contract: TradingContract | None = None,
+        cash=1_000_000,
 ):
+    contract = contract or DEFAULT_TRADING_CONTRACT
+    if confidence_threshold is None:
+        confidence_threshold = contract.entry_probability_threshold()
     skip_steps = 1024 + model_in_observations
 
     class NeuralNetStrat(Strategy):
@@ -49,6 +74,7 @@ def create_backtest_model_with_data(
             super().__init__(broker, data, params)
             self.current_order = None
             self.buy_price = None
+            self.pending_entry = False
 
         def init(self):
             pass
@@ -59,8 +85,14 @@ def create_backtest_model_with_data(
                 return
 
             if len(self.data) > skip_steps:
+                if self.position and self.buy_price is None and len(self.trades) > 0:
+                    self.buy_price = self.trades[-1].entry_price
+                    self.pending_entry = False
+                    if print_actions:
+                        print(f"[{self.data.index[-1]}] entry filled at {self.buy_price}")
+
                 df = self.data.df.iloc[-skip_steps:].copy()
-                df.drop(columns=["Volume"], inplace=True)
+                df.drop(columns=["Volume"], inplace=True, errors="ignore")
 
                 # cheating to improve performance
                 preprocessed, _ = scale_dataframe(preprocess_make_ohlc_relative(df), scaler)
@@ -69,19 +101,21 @@ def create_backtest_model_with_data(
                                                                                                           -1)
                 curr_close = df.iloc[-1]["Close"]
 
-                signal = model(torch.from_numpy(observation))
-                if signal > confidence_threshold and self.buy_price is None:
+                signal = predict_model_probability(model, observation)
+                if signal > confidence_threshold and self.buy_price is None and not self.pending_entry:
                     self.current_order = self.buy()
-
-                    self.buy_price = curr_close
+                    self.pending_entry = True
                     if print_actions:
-                        print(f"[{df.index.values[-1]}] bought at {self.buy_price}")
+                        print(f"[{df.index.values[-1]}] buy signal {signal:.4f}")
 
-                if self.buy_price is not None and (stop_loss_price(self.buy_price, 0.4) >= curr_close or curr_close >= take_profit_price(self.buy_price, 0.4)):
-                    self.sell()
+                if self.buy_price is not None and (
+                        stop_loss_price(self.buy_price, contract.stop_loss_percent) >= curr_close
+                        or curr_close >= take_profit_price(self.buy_price, contract.take_profit_percent)
+                ):
+                    self.position.close()
 
                     if print_actions:
-                        commission = 0.001
+                        commission = contract.commission
                         sell_fee = curr_close * (1 - commission)
                         buy_fee = self.buy_price * (1 + commission)
                         gain_from_trade_fee = (sell_fee - buy_fee) / buy_fee
@@ -93,13 +127,14 @@ def create_backtest_model_with_data(
                         )
 
                     self.buy_price = None
+                    self.pending_entry = False
 
-    backtest_dataset = preprocess_add_features(data.loc[start:end])
+    backtest_dataset = ensure_feature_columns(data.loc[start:end])
     # backtest_prepro_dataset, scaler = preprocess_scale(data.loc[start:end], scaler)
     return Backtest(
         backtest_dataset,
         NeuralNetStrat,
-        commission=0.001,
+        commission=contract.commission,
         exclusive_orders=True,
-        cash=1_000_000,
+        cash=cash,
     )

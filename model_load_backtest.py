@@ -15,6 +15,7 @@ def run_backtest_on_all_tickers(
 ):
     sum_equity = None
     trades = 0
+    start_cash = 0
     for _, df, _, scaler, name in df_tickers:
         start = df.index.max() - pd.Timedelta(days=time_delta_days)
         end = df.index.max()
@@ -33,15 +34,15 @@ def run_backtest_on_all_tickers(
             )
 
         trades += len(res._trades)
+        start_cash += res._equity_curve["Equity"].iloc[0]
 
         equity = res._equity_curve["Equity"].iloc[skip_steps:]
         if sum_equity is None:
             sum_equity = equity
         else:
-            sum_equity += equity
+            sum_equity = sum_equity.add(equity, fill_value=0)
 
         print(f"backtest for {name} finished; time taken: {time.time() - t}")
-    start_cash = 1_000_000
 
     return strat_name, sum_equity, trades, start_cash
 

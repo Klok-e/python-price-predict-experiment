@@ -89,14 +89,15 @@ def test_sample_weights_mirror_class_imbalance(synthetic_tickers):
     weight_class1 = weights[-1]         # any element with label 1
     assert weight_class1 > weight_class0, "Minority class should receive higher weight"
 
-    # Sanity: weights follow inverse-frequency rule  (N / count[class])
-    unique, counts = np.unique(
-        np.concatenate(
-            [t[2].iloc[window_size - 1 :: stride].to_numpy().flatten()  # labels per ticker
-             for t in synthetic_tickers]
-        ),
-        return_counts=True,
-    )
-    expected = {cls: len(weights) / cnt for cls, cnt in zip(unique, counts)}
-    for w, lbl in zip(weights, np.repeat(unique, counts)):
-        assert np.isclose(w, expected[lbl])
+    # Sanity: each ticker receives equal total sampling mass, and that mass is
+    # split evenly across the classes present in that ticker.
+    expected_weights = []
+    for ticker in synthetic_tickers:
+        labels = ticker[2].iloc[window_size - 1 :: stride].to_numpy().flatten().astype(np.int32)
+        unique, counts = np.unique(labels, return_counts=True)
+        ticker_mass = 1 / len(synthetic_tickers)
+        class_mass = ticker_mass / len(unique)
+        counts_by_class = dict(zip(unique, counts))
+        expected_weights.extend(class_mass / counts_by_class[int(label)] for label in labels)
+
+    np.testing.assert_allclose(weights, expected_weights)

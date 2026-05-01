@@ -31,6 +31,8 @@ def average_profitability_per_trade(P_end, P_0, NT):
     :param NT: Number of trades
     :return: Average Profitability Per Trade
     """
+    if NT == 0:
+        return 0
     return ((P_end - P_0) / P_0) / NT * 100
 
 
@@ -43,6 +45,8 @@ def sharpe_ratio(E_Rp, R_f, sigma_P):
     :param sigma_P: Standard deviation of the portfolio's excess return
     :return: Sharpe Ratio
     """
+    if sigma_P == 0 or np.isnan(sigma_P):
+        return 0
     return (E_Rp - R_f) / sigma_P
 
 

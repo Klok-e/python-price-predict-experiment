@@ -64,9 +64,6 @@ class LSTMPricePredictorModel(nn.Module):
 
         # Output layer to produce a single output
         self.output_layer = nn.Linear(post_lstm_arch[-1], 1)
-        # Sigmoid activation for the final output
-        self.sigmoid = nn.Sigmoid()
-
     def forward(self, x):
         # Pass through the initial linear layers
         x = self.pre_lstm_linear_layers(x)
@@ -77,6 +74,4 @@ class LSTMPricePredictorModel(nn.Module):
         # Pass through the subsequent linear layers
         x = self.post_lstm_linear_layers(x)
         # Pass through the output layer
-        x = self.output_layer(x)
-        # Apply sigmoid activation
-        return self.sigmoid(x)
+        return self.output_layer(x)

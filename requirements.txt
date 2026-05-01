@@ -1,0 +1,9 @@
+backtesting
+binance-historical-data
+line-profiler
+numpy
+pandas
+pytest
+scikit-learn
+ta
+torch
