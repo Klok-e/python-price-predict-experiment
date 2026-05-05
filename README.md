@@ -1,46 +1,110 @@
 # Python Price Prediction Experiment
 
-Cryptocurrency price-prediction experiment using Binance-style OHLC bars, causal technical features, PyTorch supervised models, and backtests.
+Operational cryptocurrency price-prediction workflow for the current winner:
 
-## Local Smoke Run
+`computed-data/runs/f1ab217c947e/rank_signal_report.json`
 
-Run the data, feature, first-hit label, and strict split pipeline without Jupyter or network access:
+The winning rank policy is the market-regime return-rank selector. It trains both `ridge` and
+`hist_gradient_boosting`, then uses validation-period market-regime evidence to choose the active
+model family and allocation parameters before evaluation or paper trading.
 
-```bash
-python3 run_local.py --no-train
-```
+The current historical paper replay policy is `guarded-market-regime`: it starts from the
+market-regime selector, then applies validation-only regime guards before entering the next
+evaluation window.
 
-Run a small one-epoch MLP training pass on synthetic data:
+## Workflow
 
-```bash
-python3 run_local.py --epochs 1
-```
-
-Run tests:
+1. Download spot OHLC data:
 
 ```bash
-python3 -m pytest -q
+.venv/bin/python download_data.py \
+  --tickers NEARUSDT,SOLUSDT,ETHUSDT,BNBUSDT \
+  --start-date 2023-04-01
 ```
 
-## Real Data Runs
-
-Populate the Binance cache explicitly:
+2. Download futures metrics:
 
 ```bash
-python3 download_data.py --tickers SOLUSDT
+.venv/bin/python download_futures_metrics_direct.py \
+  --tickers NEARUSDT,SOLUSDT,ETHUSDT,BNBUSDT \
+  --start-date 2023-04-01 \
+  --end-date 2026-04-30
 ```
 
-Run a tail validation report from cached data:
+3. Download premium index klines:
 
 ```bash
-python3 run_experiment.py --tickers SOLUSDT --epochs 1 --backtest-days 1
+.venv/bin/python download_premium_index_klines_direct.py \
+  --tickers NEARUSDT,SOLUSDT,ETHUSDT,BNBUSDT \
+  --start-date 2025-01-01 \
+  --end-date 2026-04-30
 ```
 
-`run_experiment.py` does not download market data. It fails if the requested cached ticker data is missing.
-It defaults to `--start-date 2023-04-01`, the first continuous window found in the current default ticker cache.
+4. Train and evaluate the market-regime rank selector:
 
-## Current Experiment Contract
+```bash
+.venv/bin/python run_rank_signal_experiment.py \
+  --model-family both \
+  --selection-mode market-regime \
+  --include-futures-metrics \
+  --include-premium-index
+```
 
-The supervised target is a conservative barrier label: after a signal on candle `t`, enter at candle `t+1` open, then label the sample positive only if take-profit is reached before stop-loss inside the lookahead horizon. Same-candle TP/SL hits, stop-loss-first hits, and no-hit outcomes are negative.
+The primary objective in this report is the final holdout window: beat buy-and-hold over the last
+`--test-days` days, with training and validation ending before that window starts. Older rolling
+windows are robustness context, not the primary success target.
 
-Training uses chronological train/validation/test splits. Scalers are fitted on training data only, then reused for validation and test.
+5. Run historical paper replay:
+
+```bash
+.venv/bin/python run_paper_replay.py \
+  --selector-policy guarded-market-regime \
+  --model-family both \
+  --include-futures-metrics \
+  --include-premium-index
+```
+
+6. Run online paper trading dry-run:
+
+```bash
+.venv/bin/python run_paper_forward.py --dry-run
+```
+
+7. Append one online paper trading cycle:
+
+```bash
+.venv/bin/python run_paper_forward.py --append
+```
+
+8. Run the online paper trading daemon:
+
+```bash
+.venv/bin/python run_paper_forward.py --daemon
+```
+
+9. Inspect online paper state:
+
+```bash
+.venv/bin/python run_paper_forward.py --state
+```
+
+Forward paper trading is a live simulation. It uses only fully closed signal bars, appends pending
+paper orders, fills them when next-open data is available, and reduces state from cash and units.
+Appending the same signal timestamp twice is idempotent; the second append writes zero records.
+
+## Artifacts
+
+- Market data cache: `computed-data/dataset/`
+- Winning run: `computed-data/runs/f1ab217c947e/`
+- Historical paper replay winner: `computed-data/runs/434a6f82d8ce/`
+- 90-day replay window report:
+  `computed-data/runs/434a6f82d8ce/paper_replay_90d_window_report.json`
+- Rank reports: `computed-data/runs/<run_id>/rank_signal_report.json`
+- Historical replay reports: `computed-data/runs/<run_id>/paper_replay_report.json`
+- Online paper ledger: `computed-data/runs/<policy_id>/paper_ledger.jsonl`
+
+## Tests
+
+```bash
+.venv/bin/python -m pytest -q
+```
