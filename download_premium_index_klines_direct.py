@@ -8,7 +8,7 @@ import urllib.request
 import zipfile
 
 
-DEFAULT_CONTEXT_TICKERS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "NEARUSDT")
+DEFAULT_CONTEXT_TICKERS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT")
 BASE_URL = "https://data.binance.vision/data/futures/um/daily/premiumIndexKlines"
 
 

@@ -13,12 +13,12 @@ except ModuleNotFoundError:
 
 OHLC_COLUMNS = ["Open", "High", "Low", "Close"]
 DEFAULT_TICKERS = [
-    "NEARUSDT",
-    "SOLUSDT",
+    "BTCUSDT",
     "ETHUSDT",
     "BNBUSDT",
+    "SOLUSDT",
 ]
-DEFAULT_EXPERIMENT_START_DATE = "2023-04-01"
+DEFAULT_EXPERIMENT_START_DATE = "2025-01-01"
 BINANCE_DATA_START_DATE = datetime.date(2023, 1, 1)
 
 

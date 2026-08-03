@@ -4,7 +4,7 @@ import datetime
 from binance_historical_data import BinanceDataDumper
 
 
-DEFAULT_CONTEXT_TICKERS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "NEARUSDT")
+DEFAULT_CONTEXT_TICKERS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT")
 
 
 def parse_tickers(value):
@@ -15,7 +15,7 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Download Binance USD-M futures metrics into the local cache.")
     parser.add_argument("--data-dir", default="computed-data/dataset")
     parser.add_argument("--tickers", default=",".join(DEFAULT_CONTEXT_TICKERS))
-    parser.add_argument("--start-date", default="2023-04-01")
+    parser.add_argument("--start-date", default="2025-01-01")
     parser.add_argument("--end-date")
     return parser.parse_args(argv)
 

@@ -8,7 +8,7 @@ import urllib.request
 import zipfile
 
 
-DEFAULT_CONTEXT_TICKERS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "NEARUSDT")
+DEFAULT_CONTEXT_TICKERS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT")
 BASE_URL = "https://data.binance.vision/data/futures/um/daily/metrics"
 
 
@@ -27,7 +27,7 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Directly download Binance USD-M daily metrics CSV files.")
     parser.add_argument("--data-dir", default="computed-data/dataset")
     parser.add_argument("--tickers", default=",".join(DEFAULT_CONTEXT_TICKERS))
-    parser.add_argument("--start-date", default="2023-04-01")
+    parser.add_argument("--start-date", default="2025-01-01")
     parser.add_argument("--end-date", default="2026-04-30")
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--sleep", type=float, default=0.2)

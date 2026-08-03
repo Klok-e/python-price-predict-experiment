@@ -2,12 +2,6 @@
 
 This repository is a Python cryptocurrency price-prediction experiment.
 
-## Conventions
-
-Follow these points when making changes:
-
-- Always follow a hard cutover approach in relation to backwards compatibility unless backwards compatibility is approved by the user.
-
 ## Experiments
 Write experiments to @experiment_log.md.
 
