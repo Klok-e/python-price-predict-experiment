@@ -82,6 +82,11 @@ class NetGrowthWorkflow:
         self.state_path = self.output_directory / "evidence-state.json"
         self.state = self._load_state()
 
+    @property
+    def protocol_hash(self) -> str:
+        """Policy Revision identity; scheduled Fitted Policy weights are deliberately excluded."""
+        return sha256(f"{self.config.identity_hash}:{_code_hash()}".encode()).hexdigest()
+
     @classmethod
     def from_paths(
         cls,
@@ -183,7 +188,7 @@ class NetGrowthWorkflow:
         canonical = self.historical.load()
         outcome = self.backend.validate(canonical, self.config, self.device)
         passed = outcome.net_return > 0.0 and outcome.max_drawdown <= self.config.drawdown_limit
-        self.state.record_validation(self.config.identity_hash, passed=passed)
+        self.state.record_validation(self.protocol_hash, passed=passed)
         self._save_state()
         artifact = self._write("validation", canonical, outcome)
         label = "Validated Policy Protocol" if passed else "Validation failed"
@@ -193,12 +198,12 @@ class NetGrowthWorkflow:
         if self.state.holdout is not None:
             label = "Holdout-Passing Protocol" if self.state.holdout.status == "passed" else "Consumed Holdout"
             return WorkflowResult(f"{label}: recorded result", self._existing("holdout"))
-        if not self.state.validation_passed or self.state.validated_protocol != self.config.identity_hash:
+        if not self.state.validation_passed or self.state.validated_protocol != self.protocol_hash:
             raise ValueError("successful validation is required before Historical Holdout")
         canonical = self.historical.load()
         outcome = self.backend.holdout(canonical, self.config, self.device)
         evidence = self.state.consume_holdout(
-            protocol_hash=self.config.identity_hash,
+            protocol_hash=self.protocol_hash,
             net_return=outcome.net_return,
             max_drawdown=outcome.max_drawdown,
         )
@@ -210,10 +215,10 @@ class NetGrowthWorkflow:
     def paper(self) -> WorkflowResult:
         canonical = self.live.load()
         observed_at = self.now()
-        self.state.start_paper(self.config.identity_hash, observed_at)
+        self.state.start_paper(self.protocol_hash, observed_at)
         outcome = self.backend.paper(canonical, self.config, self.device)
         evidence = self.state.record_paper_progress(
-            self.config.identity_hash,
+            self.protocol_hash,
             observed_at,
             changes=outcome.qualifying_changes,
             net_return=outcome.net_return,

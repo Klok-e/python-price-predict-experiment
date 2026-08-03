@@ -32,9 +32,10 @@ uv run netgrowth paper --device cpu
   Policy Protocol.
 - `holdout` is locked until validation passes and consumes the May-July 2026 Historical Holdout
   exactly once.
-- `paper` runs public-data-only Forward Paper Proof. Completion requires both 60 days and 100
-  Qualifying Portfolio Changes. A Policy Revision resets its Proof Clock; a scheduled Sunday Fitted
-  Policy handoff does not.
+- `paper` is reserved for public-data-only Forward Paper Proof. The current foundation refuses to
+  substitute archive replay for a persistent contemporaneous-midpoint session. Completion requires
+  both 60 days and 100 Qualifying Portfolio Changes. A Policy Revision resets its Proof Clock; a
+  scheduled Sunday Fitted Policy handoff does not.
 
 Independent evidence runs start flat with $10,000. Gross Exposure is capped at 100%, absolute
 exposure to one ticker at 50%, and a 20% Drawdown Limit triggers a delayed flattening Risk Stop.

@@ -5,6 +5,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
+from netgrowth.torch_backend import TorchEvaluationBackend, _average_targets  # noqa: E402
 from netgrowth.training import (  # noqa: E402
     LinearDirectPolicy,
     TemporalConvPolicy,
@@ -66,3 +67,23 @@ def test_declared_policies_emit_one_continuous_weight_per_instrument() -> None:
     assert temporal(market, current).shape == (2, 4)
     assert torch.all(linear(market, current).abs() <= 0.5)
     assert torch.all(temporal(market, current).abs() <= 0.5)
+
+
+def test_temporal_ensemble_averages_member_weights_before_replay() -> None:
+    timestamp = pd.Timestamp("2026-01-01", tz="UTC")
+    members = [
+        {timestamp: {"BTCUSDT": 0.5, "ETHUSDT": 0.1}},
+        {timestamp: {"BTCUSDT": -0.5, "ETHUSDT": 0.2}},
+        {timestamp: {"BTCUSDT": 0.5, "ETHUSDT": -0.3}},
+    ]
+
+    averaged = _average_targets(members, ("BTCUSDT", "ETHUSDT"))
+
+    assert averaged[timestamp] == pytest.approx({"BTCUSDT": 1 / 6, "ETHUSDT": 0.0})
+
+
+def test_paper_backend_refuses_to_relabel_archive_replay_as_forward_proof(tmp_path) -> None:
+    backend = TorchEvaluationBackend(tmp_path)
+
+    with pytest.raises(RuntimeError, match="contemporaneous midpoint"):
+        backend.paper(None, None, "cpu")  # type: ignore[arg-type]

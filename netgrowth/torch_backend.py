@@ -50,19 +50,23 @@ def _fit(
 ) -> nn.Module:
     torch.manual_seed(seed)
     model = factory(features.shape[1]).to(device)
-    usable = min(len(features) - receptive_bars, 2048)
+    usable = min(len(features) - receptive_bars, 256)
     if usable < 32:
         raise ValueError("insufficient revealed history to fit the Policy Protocol")
     values = torch.tensor(features.to_numpy(dtype=np.float32), device=device)
     windows = values.unfold(0, receptive_bars, 1).transpose(1, 2)[-usable:]
     response = torch.tensor(returns.to_numpy(dtype=np.float32), device=device)[-usable:]
     carry = torch.tensor(funding.to_numpy(dtype=np.float32), device=device)[-usable:]
-    current = torch.zeros((usable, returns.shape[1]), device=device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.002)
     multiplier = torch.tensor(0.0, device=device)
     for _ in range(4):
         optimizer.zero_grad()
-        weights = model(windows, current)
+        current = torch.zeros((1, returns.shape[1]), device=device)
+        trajectory = []
+        for window in windows:
+            current = model(window.unsqueeze(0), current)
+            trajectory.append(current.squeeze(0))
+        weights = torch.stack(trajectory)
         loss = net_log_growth_loss(
             weights,
             response,
@@ -83,9 +87,13 @@ def _targets(
     features: pd.DataFrame,
     receptive_bars: int,
     tickers: tuple[str, ...],
+    initial_weights: np.ndarray | None = None,
 ) -> dict[pd.Timestamp, dict[str, float]]:
     values = torch.tensor(features.to_numpy(dtype=np.float32))
-    current = torch.zeros((1, len(tickers)))
+    starting_weights = (
+        np.zeros((1, len(tickers)), dtype=np.float32) if initial_weights is None else initial_weights.reshape(1, -1)
+    )
+    current = torch.tensor(starting_weights, dtype=torch.float32)
     targets: dict[pd.Timestamp, dict[str, float]] = {}
     with torch.no_grad():
         for position in range(receptive_bars - 1, len(features)):
@@ -94,6 +102,16 @@ def _targets(
             targets[features.index[position]] = dict(zip(tickers, output.tolist(), strict=True))
             current = output.unsqueeze(0)
     return targets
+
+
+def _average_targets(
+    members: list[dict[pd.Timestamp, dict[str, float]]], tickers: tuple[str, ...]
+) -> dict[pd.Timestamp, dict[str, float]]:
+    timestamps = set.intersection(*(set(member) for member in members))
+    return {
+        timestamp: {ticker: float(np.mean([member[timestamp][ticker] for member in members])) for ticker in tickers}
+        for timestamp in timestamps
+    }
 
 
 def _replay(
@@ -190,7 +208,8 @@ class TorchEvaluationBackend:
         seed: int,
         receptive_bars: int,
         mode: str = "historical",
-    ) -> tuple[ReplayResult, nn.Module]:
+        initial_training_end: pd.Timestamp | None = None,
+    ) -> tuple[ReplayResult, nn.Module, dict[pd.Timestamp, dict[str, float]]]:
         state = build_market_state(canonical)
         state_index = cast(pd.DatetimeIndex, state.index)
         closes = _decision_closes(canonical, state_index)
@@ -204,10 +223,12 @@ class TorchEvaluationBackend:
         )
         all_targets: dict[pd.Timestamp, dict[str, float]] = {}
         fitted: nn.Module | None = None
+        handoff_weights = np.zeros(len(config.tickers), dtype=np.float32)
         boundary = start
         while boundary < end:
             next_boundary = min(boundary + pd.Timedelta(days=7), end)
-            revealed = state.loc[state.index < boundary]
+            training_end = initial_training_end if boundary == start and initial_training_end else boundary
+            revealed = state.loc[state.index < training_end]
             fitted = _fit(
                 factory,
                 revealed,
@@ -220,22 +241,37 @@ class TorchEvaluationBackend:
                 receptive_bars=receptive_bars,
             )
             context = state.loc[:next_boundary].tail(len(state.loc[boundary:next_boundary]) + receptive_bars - 1)
-            all_targets.update(
-                {
-                    timestamp: weights
-                    for timestamp, weights in _targets(fitted, context, receptive_bars, config.tickers).items()
-                    if boundary <= timestamp < next_boundary
-                }
-            )
+            weekly_targets = {
+                timestamp: weights
+                for timestamp, weights in _targets(
+                    fitted,
+                    context,
+                    receptive_bars,
+                    config.tickers,
+                    initial_weights=handoff_weights,
+                ).items()
+                if boundary <= timestamp < next_boundary
+            }
+            all_targets.update(weekly_targets)
+            if weekly_targets:
+                handoff_weights = np.asarray(list(weekly_targets[max(weekly_targets)].values()), dtype=np.float32)
             boundary = next_boundary
         if fitted is None:
             raise ValueError("evaluation period is empty")
-        return _replay(canonical, all_targets, start, end, config, mode=mode), fitted
+        replay = _replay(canonical, all_targets, start, end, config, mode=mode)
+        return replay, fitted, all_targets
 
     @staticmethod
-    def _serialize(kind: str, model: nn.Module, **metadata: int) -> bytes:
+    def _serialize(kind: str, models: tuple[nn.Module, ...], **metadata: int) -> bytes:
         buffer = io.BytesIO()
-        torch.save({"kind": kind, "metadata": metadata, "state_dict": model.state_dict()}, buffer)
+        torch.save(
+            {
+                "kind": kind,
+                "metadata": metadata,
+                "state_dicts": [model.state_dict() for model in models],
+            },
+            buffer,
+        )
         return buffer.getvalue()
 
     def validate(self, canonical: CanonicalDataset, config: PolicyConfig, device: str) -> EvaluationOutcome:
@@ -253,7 +289,7 @@ class TorchEvaluationBackend:
         linear_replays = []
         last_model: nn.Module | None = None
         for fold in folds:
-            replay, last_model = self._evaluate_period(
+            replay, last_model, _ = self._evaluate_period(
                 canonical,
                 config,
                 device,
@@ -262,6 +298,7 @@ class TorchEvaluationBackend:
                 linear_factory,
                 seed=config.seeds[0],
                 receptive_bars=1,
+                initial_training_end=fold.training_end,
             )
             linear_replays.append(replay)
         linear = CandidateResult(
@@ -270,14 +307,18 @@ class TorchEvaluationBackend:
         )
 
         temporal_results = []
-        temporal_models: dict[str, nn.Module] = {}
+        temporal_models: dict[str, tuple[nn.Module, ...]] = {}
+        temporal_ensemble_replays: dict[str, list[ReplayResult]] = {}
         for width in config.temporal_widths:
             for days in config.receptive_field_days:
                 receptive = days * 96
                 seeds = []
                 seed_replays: list[list[ReplayResult]] = []
+                seed_targets: list[list[dict[pd.Timestamp, dict[str, float]]]] = []
+                last_seed_models: list[nn.Module] = []
                 for seed in config.seeds:
                     replays = []
+                    targets_by_fold = []
                     for fold in folds:
 
                         def factory(
@@ -292,7 +333,7 @@ class TorchEvaluationBackend:
                                 receptive_bars=selected_receptive,
                             )
 
-                        replay, model = self._evaluate_period(
+                        replay, model, targets = self._evaluate_period(
                             canonical,
                             config,
                             device,
@@ -301,27 +342,42 @@ class TorchEvaluationBackend:
                             factory,
                             seed=seed,
                             receptive_bars=receptive,
+                            initial_training_end=fold.training_end,
                         )
-                        temporal_models[f"tcn-{width}-{days}"] = model
                         replays.append(replay)
+                        targets_by_fold.append(targets)
+                    last_seed_models.append(model)
                     seed_replays.append(replays)
+                    seed_targets.append(targets_by_fold)
                     seeds.append(
                         CandidateResult(
                             f"tcn-{width}-{days}-seed-{seed}",
                             tuple(FoldResult(item.compounded_net_return, item.max_drawdown) for item in replays),
                         )
                     )
-                ensemble_folds = tuple(
-                    FoldResult(
-                        float(np.median([seed_replays[s][f].compounded_net_return for s in range(3)])),
-                        max(seed_replays[s][f].max_drawdown for s in range(3)),
+                architecture = f"tcn-{width}-{days}"
+                temporal_models[architecture] = tuple(last_seed_models)
+                ensemble_replays = [
+                    _replay(
+                        canonical,
+                        _average_targets(
+                            [seed_targets[seed_index][fold_index] for seed_index in range(3)],
+                            config.tickers,
+                        ),
+                        fold.validation_start,
+                        fold.validation_end,
+                        config,
                     )
-                    for f in range(len(folds))
+                    for fold_index, fold in enumerate(folds)
+                ]
+                temporal_ensemble_replays[architecture] = ensemble_replays
+                ensemble_folds = tuple(
+                    FoldResult(replay.compounded_net_return, replay.max_drawdown) for replay in ensemble_replays
                 )
                 seed_tuple = cast(tuple[CandidateResult, CandidateResult, CandidateResult], tuple(seeds))
                 temporal_results.append(
                     TemporalCandidate(
-                        f"tcn-{width}-{days}",
+                        architecture,
                         seed_tuple,
                         CandidateResult(f"tcn-{width}-{days}-ensemble", ensemble_folds),
                     )
@@ -329,17 +385,14 @@ class TorchEvaluationBackend:
         selected = choose_candidate(linear, tuple(temporal_results), drawdown_limit=config.drawdown_limit)
         if selected.name == "linear":
             assert last_model is not None
-            model_bytes = self._serialize("linear", last_model)
+            model_bytes = self._serialize("linear", (last_model,))
             chosen_replays = linear_replays
         else:
             architecture = selected.name.removesuffix("-ensemble")
-            model = temporal_models[architecture]
+            models = temporal_models[architecture]
             width, days = (int(value) for value in architecture.split("-")[1:])
-            model_bytes = self._serialize("tcn-ensemble", model, width=width, days=days)
-            chosen = next(item for item in temporal_results if item.architecture == architecture)
-            chosen_replays = [
-                max(linear_replays, key=lambda value: value.compounded_net_return) for _ in chosen.ensemble.folds
-            ]
+            model_bytes = self._serialize("tcn-ensemble", models, width=width, days=days)
+            chosen_replays = temporal_ensemble_replays[architecture]
         aggregate_return = selected.compounded_net_return
         max_drawdown = max(fold.max_drawdown for fold in selected.folds)
         return EvaluationOutcome(
@@ -372,6 +425,7 @@ class TorchEvaluationBackend:
     ) -> EvaluationOutcome:
         selected = self._selected_metadata()
         metadata = cast(dict[str, int], selected["metadata"])
+        models: tuple[nn.Module, ...]
         if selected["kind"] == "linear":
 
             def factory(count: int) -> nn.Module:
@@ -385,18 +439,49 @@ class TorchEvaluationBackend:
             def factory(count: int) -> nn.Module:
                 return TemporalConvPolicy(count, len(config.tickers), width=width, receptive_bars=receptive)
 
-        replay, fitted = self._evaluate_period(
-            canonical,
-            config,
-            device,
-            start,
-            end,
-            factory,
-            seed=config.seeds[0],
-            receptive_bars=receptive,
-            mode=mode,
+        if selected["kind"] == "linear":
+            replay, fitted, _ = self._evaluate_period(
+                canonical,
+                config,
+                device,
+                start,
+                end,
+                factory,
+                seed=config.seeds[0],
+                receptive_bars=receptive,
+                mode=mode,
+            )
+            models = (fitted,)
+        else:
+            member_targets = []
+            fitted_members = []
+            for seed in config.seeds:
+                _, fitted, targets = self._evaluate_period(
+                    canonical,
+                    config,
+                    device,
+                    start,
+                    end,
+                    factory,
+                    seed=seed,
+                    receptive_bars=receptive,
+                    mode=mode,
+                )
+                member_targets.append(targets)
+                fitted_members.append(fitted)
+            replay = _replay(
+                canonical,
+                _average_targets(member_targets, config.tickers),
+                start,
+                end,
+                config,
+                mode=mode,
+            )
+            models = tuple(fitted_members)
+        return _outcome(
+            replay,
+            self._serialize(str(selected["kind"]), models, **metadata),
         )
-        return _outcome(replay, self._serialize(str(selected["kind"]), fitted, **metadata))
 
     def holdout(self, canonical: CanonicalDataset, config: PolicyConfig, device: str) -> EvaluationOutcome:
         start = pd.Timestamp(config.holdout_start, tz="UTC")
@@ -404,7 +489,8 @@ class TorchEvaluationBackend:
         return self._post_validation(canonical, config, device, start=start, end=end, mode="historical")
 
     def paper(self, canonical: CanonicalDataset, config: PolicyConfig, device: str) -> EvaluationOutcome:
-        end = min(data.perpetual.index.max() for data in canonical.instruments.values())
-        start = max(data.perpetual.index.min() for data in canonical.instruments.values())
-        start = max(start, end - pd.Timedelta(days=config.proof_days + 7))
-        return self._post_validation(canonical, config, device, start=start, end=end, mode="paper")
+        del canonical, config, device
+        raise RuntimeError(
+            "Forward Paper Proof requires a persistent contemporaneous midpoint session; "
+            "historical archive replay is Development Evidence and cannot advance the Proof Clock"
+        )
