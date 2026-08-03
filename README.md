@@ -1,95 +1,63 @@
-# Python Price Prediction Experiment
+# Direct Net-Growth Portfolio Policy
 
-Learned one-minute cryptocurrency day-trading experiment.
+A causal 15-minute portfolio-policy experiment for BTCUSDT, ETHUSDT, BNBUSDT, and SOLUSDT
+Binance USD-M perpetuals. The Trading Policy emits continuous long, short, or cash Target Weights
+and trains against portfolio Net Log Growth after an all-in turnover cost and actual funding.
 
-The operational workflow is a long-only intraday backtest. It scores every closed 1m bar, looks for
-small after-cost opportunities on liquid majors, and uses walk-forward validation to select model
-family, opportunity horizon, trade threshold, and max hold.
+This repository does not place real orders. A policy is not called profitable until it completes
+Forward Paper Proof with positive Compounded Net Return and no Drawdown Limit breach.
 
-There is no online paper trading path and no shorting path.
+## Install
+
+The project uses the committed Python 3.13 `uv.lock` and CPU-only Torch source.
+
+```bash
+uv sync --locked
+```
+
+All Policy Protocol decisions live in `policy.toml`. CLI overrides are intentionally limited to
+configuration/data/output paths and the compute device.
 
 ## Workflow
 
-1. Download spot OHLC data:
-
 ```bash
-.venv/bin/python download_data.py \
-  --tickers BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT \
-  --start-date 2025-01-01
+uv run netgrowth data-sync
+uv run netgrowth validate --device cpu
+uv run netgrowth holdout --device cpu
+uv run netgrowth paper --device cpu
 ```
 
-2. Download futures metrics:
+- `data-sync` retains maximum available public Binance-native history from 2020 onward.
+- `validate` runs twelve purged, prequential 90-day Walk-Forward Folds and freezes an eligible
+  Policy Protocol.
+- `holdout` is locked until validation passes and consumes the May-July 2026 Historical Holdout
+  exactly once.
+- `paper` runs public-data-only Forward Paper Proof. Completion requires both 60 days and 100
+  Qualifying Portfolio Changes. A Policy Revision resets its Proof Clock; a scheduled Sunday Fitted
+  Policy handoff does not.
+
+Independent evidence runs start flat with $10,000. Gross Exposure is capped at 100%, absolute
+exposure to one ticker at 50%, and a 20% Drawdown Limit triggers a delayed flattening Risk Stop.
+
+## Data and artifacts
+
+Raw data is cached under `computed-data/dataset/`. Evidence is content-addressed under
+`computed-data/evidence/`. Each run stores only:
+
+- `manifest.json`
+- `report.json`
+- `equity.csv`
+- `trades.csv`
+- `model.pt`
+
+The manifest identifies configuration, code, canonical data, and Fitted Policy hashes. Charts are
+generated from equity and trades on demand; no HTML timeline or decision ledger is persisted.
+
+## Verification
 
 ```bash
-.venv/bin/python download_futures_metrics_direct.py \
-  --tickers BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT \
-  --start-date 2025-01-01 \
-  --end-date 2026-04-30
-```
-
-3. Download premium index klines:
-
-```bash
-.venv/bin/python download_premium_index_klines_direct.py \
-  --tickers BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT \
-  --start-date 2025-01-01 \
-  --end-date 2026-04-30
-```
-
-4. Run learned intraday walk-forward backtest:
-
-```bash
-.venv/bin/python run_intraday_experiment.py
-```
-
-Use rolling backtest cross-validation when you want several recent chronological folds instead of
-one walk-forward run:
-
-```bash
-.venv/bin/python run_intraday_experiment.py \
-  --cv-folds 3 \
-  --cv-windows-per-fold 3 \
-  --min-cv-fold-trades 10
-```
-
-Defaults:
-
-- Tickers: `BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT`
-- Windows: 60d train, 14d validation, 14d evaluation, 14d stride
-- Cross-validation: off by default; `--cv-folds` enables rolling recent folds with continuous
-  out-of-sample evaluation coverage
-- Horizon/max-hold candidates: 1, 5, 15, 30, 60 minutes
-- Model families: `ridge`, `ridge_shared`, `market_ridge`, `huber`, `logistic_positive`,
-  `hist_gradient_boosting`, optional `ridge_alpha_<N>` and `ridge_decay_<days>` variants, and
-  optional `_market_excess`, `_market_return`, `_path_mean`, `_vol_scaled`,
-  `_path_mean_vol_scaled`, or `_market_excess_vol_scaled` target variants
-- Selection: active positive after-cost candidates ranked by validation excess over buy-and-hold
-  with validation-selected entry/exit thresholds plus optional selection trade floor/activity weight
-  and optional validation-slice stability ranking
-- CV proof: positive Sharpe, drawdown control, fold activity, and buy-and-hold excess-return gates
-- Execution: long-only, 25% equity per active ticker by default, optional risk-unit grid, 100% max exposure
-- Costs: commission plus slippage
-- Diagnostics: selected windows include validation-to-evaluation drift for excess return, Sharpe,
-  drawdown, and trade count
-
-## Artifacts
-
-- Market data cache: `computed-data/dataset/`
-- Intraday reports: `computed-data/runs/<run_id>/intraday_report.json`
-- Intraday positions: `computed-data/runs/<run_id>/intraday_positions.csv`
-- Intraday buy-and-hold positions: `computed-data/runs/<run_id>/intraday_buy_hold_positions.csv`
-- Intraday ledger: `computed-data/runs/<run_id>/intraday_ledger.jsonl`
-- Intraday decision timeline: `computed-data/runs/<run_id>/intraday_decision_timeline.html`
-- Intraday CV reports: `computed-data/runs/<run_id>/intraday_cv_report.json`
-- Intraday CV fold artifacts: `computed-data/runs/<run_id>/cv_folds/fold_<NN>/`
-- Intraday CV pooled equity: `computed-data/runs/<run_id>/intraday_cv_pooled_positions.csv`
-
-Run ids include the intraday config and a fingerprint of the intraday runner, data builder, and
-policy code. Use `--config-only-run-id` only when intentionally comparing against legacy
-config-hash artifacts.
-
-## Tests
-
-```bash
-.venv/bin/python -m pytest -q
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy
+uv run pytest -q
 ```

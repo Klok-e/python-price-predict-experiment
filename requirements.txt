@@ -1,6 +1,0 @@
-binance-historical-data
-numpy
-pandas
-plotly
-pytest
-scikit-learn

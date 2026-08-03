@@ -1,0 +1,39 @@
+[universe]
+tickers = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
+market = "Binance USD-M perpetuals"
+history_start = "2020-01-01"
+
+[timing]
+decision_minutes = 15
+decision_latency_seconds = 60
+mark_minutes = 1
+retrain_weekday_utc = "Sunday"
+
+[execution]
+transaction_cost_rate = 0.0007
+minimum_turnover = 0.01
+initial_equity = 10000.0
+
+[risk]
+max_gross_exposure = 1.0
+max_instrument_weight = 0.5
+drawdown_limit = 0.20
+
+[features]
+contexts = ["15m", "1h", "4h", "1d"]
+normalization_window_bars = 96
+
+[models]
+temporal_widths = [32, 64]
+receptive_field_days = [1, 7]
+seeds = [17, 29, 43]
+
+[validation]
+folds = 12
+fold_days = 90
+holdout_start = "2026-05-01"
+holdout_end = "2026-07-31"
+
+[proof]
+minimum_days = 60
+minimum_qualifying_changes = 100

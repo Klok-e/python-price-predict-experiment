@@ -1,6 +1,7 @@
 __pycache__/
 venv/
 .venv/
+.idea/
 spot/
 darts_logs/
 lightning_logs/
