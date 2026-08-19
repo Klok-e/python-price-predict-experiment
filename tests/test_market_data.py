@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import urllib.parse
 from datetime import UTC, datetime
+from threading import Barrier
 
 import numpy as np
 import pandas as pd
@@ -183,6 +184,52 @@ def test_public_paper_feed_emits_current_quotes_and_only_newly_closed_rows(monke
     assert sum("/ticker/bookTicker" in url for url in requested) == 1
     assert all(url.startswith(("https://fapi.binance.com/", "https://api.binance.com/")) for url in requested)
     assert not any("signature=" in url or "apiKey=" in url for url in requested)
+
+
+def test_public_paper_mark_fetches_only_execution_complete_inputs(monkeypatch, tmp_path) -> None:
+    server_time = pd.Timestamp("2026-08-03 12:03:30", tz="UTC")
+    server_ms = int(server_time.timestamp() * 1_000)
+    open_time = int(pd.Timestamp("2026-08-03 12:02:00", tz="UTC").timestamp() * 1_000)
+    requested: list[str] = []
+    concurrent_klines = Barrier(len(TICKERS), timeout=1.0)
+
+    def public_api(url: str, timeout: float):
+        del timeout
+        requested.append(url)
+        parsed = urllib.parse.urlparse(url)
+        if parsed.path == "/fapi/v1/time":
+            return JsonResponse({"serverTime": server_ms})
+        if parsed.path == "/fapi/v1/ticker/bookTicker":
+            return JsonResponse(
+                [
+                    {
+                        "symbol": ticker,
+                        "bidPrice": "100",
+                        "askPrice": "102",
+                        "time": server_ms,
+                    }
+                    for ticker in TICKERS
+                ]
+            )
+        if parsed.path == "/fapi/v1/klines":
+            concurrent_klines.wait()
+            return JsonResponse([_kline(open_time, open_time + 59_999)])
+        if parsed.path == "/fapi/v1/fundingRate":
+            return JsonResponse([])
+        raise AssertionError(f"paper mark requested a model-only input: {url}")
+
+    monkeypatch.setattr("urllib.request.urlopen", public_api)
+
+    observed = PublicPaperAdapter(tmp_path, TICKERS).mark(datetime(2026, 8, 3, 12, 1, 59, 999000, tzinfo=UTC))
+
+    assert observed.market_minute(datetime(2026, 8, 3, 12, 2, tzinfo=UTC)).timestamp == datetime(
+        2026, 8, 3, 12, 3, tzinfo=UTC
+    )
+    assert sum("/fapi/v1/klines" in url for url in requested) == len(TICKERS)
+    assert sum("/fapi/v1/fundingRate" in url for url in requested) == len(TICKERS)
+    assert not any("/api/v3/klines" in url for url in requested)
+    assert not any("premiumIndexKlines" in url for url in requested)
+    assert not any("openInterestHist" in url for url in requested)
 
 
 def test_public_paper_feed_does_not_invent_a_row_before_the_next_minute_closes(monkeypatch, tmp_path) -> None:

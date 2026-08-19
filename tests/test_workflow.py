@@ -73,6 +73,10 @@ class FakePaperFeed:
         del after
         return self.observation
 
+    def mark(self, after):
+        del after
+        return self.observation
+
 
 @dataclass
 class BlockingRefitBackend(FakeBackend):

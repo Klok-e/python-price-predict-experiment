@@ -543,6 +543,41 @@ class PublicPaperAdapter:
             )
         return PaperFeedObservation(server_time, observed_at, quotes, instruments, self.tickers)
 
+    def mark(self, after: datetime | None) -> PaperFeedObservation:
+        """Fetch only the contemporaneous inputs needed for one-minute execution and marking."""
+        after_time = pd.Timestamp(after).tz_convert("UTC") if after is not None else None
+        server_time = self._server_time()
+        observed_at = pd.Timestamp(self.clock()).tz_convert("UTC")
+        quotes = self._quotes(server_time, observed_at)
+        query_after = after_time
+        if query_after is None:
+            query_after = server_time.floor("min") - pd.Timedelta(minutes=1, milliseconds=1)
+
+        def instrument(ticker: str) -> PaperInstrumentCatchup:
+            perpetual = self._klines(
+                base=FUTURES_API,
+                path="/fapi/v1/klines",
+                ticker=ticker,
+                after=query_after,
+                server_time=server_time,
+            )
+            return PaperInstrumentCatchup(
+                perpetual=perpetual,
+                spot=self._empty_klines(),
+                premium=pd.Series(dtype=float, index=pd.DatetimeIndex([], tz="UTC"), name="premium"),
+                settled_funding=self._funding(ticker, query_after, server_time),
+                open_interest=pd.Series(
+                    dtype=float,
+                    index=pd.DatetimeIndex([], tz="UTC"),
+                    name="open_interest",
+                ),
+            )
+
+        with ThreadPoolExecutor(max_workers=len(self.tickers)) as executor:
+            futures = {ticker: executor.submit(instrument, ticker) for ticker in self.tickers}
+            instruments = {ticker: futures[ticker].result() for ticker in self.tickers}
+        return PaperFeedObservation(server_time, observed_at, quotes, instruments, self.tickers)
+
     def load(self) -> CanonicalDataset:
         if self._history is None:
             self._history = HistoricalArchiveAdapter(self.root, self.tickers).load()

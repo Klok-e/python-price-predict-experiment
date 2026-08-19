@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 
 import pandas as pd
 
@@ -19,6 +19,7 @@ from .config import PolicyConfig, load_config
 from .evidence import EvidenceState, HoldoutEvidence, PaperEvidence
 from .market_data import CanonicalDataset, MarketDataAdapter
 from .simulation import (
+    MarketMinute,
     SimulationState,
     advance_simulation,
     marked_weights,
@@ -73,6 +74,16 @@ class DataSynchronizer(Protocol):
     def sync(self) -> str: ...
 
 
+class PaperObservation(Protocol):
+    def market_minute(self, after: datetime | None) -> MarketMinute: ...
+
+
+class PaperMarketDataAdapter(MarketDataAdapter, Protocol):
+    def observe(self, after: datetime | None) -> PaperObservation: ...
+
+    def mark(self, after: datetime | None) -> PaperObservation: ...
+
+
 @dataclass(frozen=True)
 class WorkflowResult:
     summary: str
@@ -120,7 +131,7 @@ class NetGrowthWorkflow:
         *,
         config: PolicyConfig,
         historical: MarketDataAdapter,
-        live: MarketDataAdapter,
+        live: PaperMarketDataAdapter,
         backend: EvaluationBackend,
         output_directory: str | Path,
         control_directory: str | Path | None = None,
@@ -573,15 +584,13 @@ class NetGrowthWorkflow:
                 terminal=True,
             )
 
-        feed = cast(Any, self.live)
-        if not hasattr(feed, "observe"):
-            raise TypeError("paper operation requires a contemporaneous public market-data feed")
+        feed = self.live
         simulation_config = simulation_config_for_policy(self.config, mode="paper")
         bootstrap_model: bytes | None = None
         bootstrap_time: datetime | None = None
         bootstrap_data_hash: str | None = None
         if session is None:
-            probe = feed.observe(None)
+            probe = feed.mark(None)
             probe_minute = probe.market_minute(None)
             canonical = self.live.load()
             bootstrap = self.backend.paper(
@@ -598,7 +607,7 @@ class NetGrowthWorkflow:
             bootstrap_data_hash = canonical.identity_hash
 
         after = session.simulation.previous_timestamp if session is not None else None
-        observation = feed.observe(after)
+        observation = feed.mark(after)
         minute = observation.market_minute(after)
         replay, simulation = advance_simulation(
             [minute],
