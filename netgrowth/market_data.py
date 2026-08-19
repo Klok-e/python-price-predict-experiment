@@ -38,7 +38,7 @@ class CanonicalDataset:
                 missing_columns = set(BAR_COLUMNS) - set(bars.columns)
                 if missing_columns:
                     raise ValueError(f"{ticker} {source_name} missing {sorted(missing_columns)}")
-                if bars.loc[:, list(BAR_COLUMNS)].isna().any().any():
+                if source_name == "perpetual" and bars.loc[:, list(BAR_COLUMNS)].isna().any().any():
                     raise ValueError(f"{ticker} missing required execution price or bar value")
             if instrument.funding.isna().any():
                 raise ValueError(f"{ticker} missing required funding cashflow")
@@ -47,6 +47,20 @@ class CanonicalDataset:
             for optional in (instrument.open_interest, instrument.premium, instrument.funding):
                 if not isinstance(optional.index, pd.DatetimeIndex) or str(optional.index.tz) != "UTC":
                     raise ValueError(f"{ticker} timestamped inputs must use timezone-aware UTC")
+        common_start = max(instrument.perpetual.index.min() for instrument in self.instruments.values())
+        common_end = min(instrument.perpetual.index.max() for instrument in self.instruments.values())
+        if common_start >= common_end:
+            raise ValueError("fixed Trading Universe has no Execution-Complete Interval")
+        expected = pd.date_range(common_start, common_end, freq="min", tz="UTC")
+        funding_tolerance = pd.Timedelta(hours=8, minutes=1)
+        for ticker, instrument in self.instruments.items():
+            execution = instrument.perpetual.loc[common_start:common_end]
+            if not execution.index.equals(expected):
+                raise ValueError(f"{ticker} has a gap in the Execution-Complete Interval")
+            events = instrument.funding.loc[common_start:common_end].index
+            boundaries = pd.DatetimeIndex([common_start, *events, common_end])
+            if boundaries.to_series().diff().dropna().gt(funding_tolerance).any():
+                raise ValueError(f"{ticker} missing required scheduled funding cashflow")
 
     @property
     def common_trading_start(self) -> pd.Timestamp:
@@ -144,7 +158,9 @@ def _instrument_features(data: InstrumentData, ticker: str) -> pd.DataFrame:
         2.0 * perpetual["taker_buy_volume"] / perpetual["volume"].replace(0.0, np.nan) - 1.0
     ).fillna(0.0)
     result[prefix + "trades"] = perpetual["trades"]
-    result[prefix + "basis"] = perpetual["close"] / spot["close"] - 1.0
+    spot_available = spot["close"].notna()
+    result[prefix + "basis"] = (perpetual["close"] / spot["close"] - 1.0).fillna(0.0)
+    result[prefix + "spot_available"] = spot_available.astype(float)
 
     result_index = cast(pd.DatetimeIndex, result.index)
     funding, funding_mask = _asof_optional(data.funding, result_index)

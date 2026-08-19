@@ -10,7 +10,8 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
   "numpy>=2.2",
   "pandas>=2.2",
-  "torch>=2.7,<3",
+  "torch==2.13.0+rocm7.2",
+  "triton-rocm==3.7.1; sys_platform == 'linux'",
 ]
 
 [project.scripts]
@@ -25,12 +26,13 @@ dev = [
 ]
 
 [[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
+name = "pytorch-rocm"
+url = "https://download.pytorch.org/whl/rocm7.2"
 explicit = true
 
 [tool.uv.sources]
-torch = { index = "pytorch-cpu" }
+torch = { index = "pytorch-rocm" }
+triton-rocm = { index = "pytorch-rocm" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["netgrowth"]

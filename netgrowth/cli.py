@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import time
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 
 def _paths(parser: argparse.ArgumentParser, *, device: bool = True) -> None:
     parser.add_argument("--config", default="policy.toml", help="checked-in Policy Protocol TOML")
-    parser.add_argument("--data-dir", default="computed-data/dataset")
-    parser.add_argument("--output-dir", default="computed-data/evidence")
     if device:
         parser.add_argument("--device", default="cpu")
 
@@ -30,10 +30,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
     workflow = NetGrowthWorkflow.from_paths(
         config_path=arguments.config,
-        data_directory=arguments.data_dir,
-        output_directory=arguments.output_dir,
+        data_directory="computed-data/dataset",
+        output_directory="computed-data/evidence",
         device=getattr(arguments, "device", "cpu"),
     )
-    result = getattr(workflow, arguments.command.replace("-", "_"))()
-    print(result.summary)
+    if arguments.command == "paper":
+        while True:
+            result = workflow.paper()
+            print(result.summary, flush=True)
+            if result.terminal:
+                break
+            now = datetime.now(UTC).timestamp()
+            next_minute = (int(now) // 60 + 1) * 60 + 2
+            time.sleep(max(0.0, next_minute - now))
+    else:
+        result = getattr(workflow, arguments.command.replace("-", "_"))()
+        print(result.summary)
     return 0

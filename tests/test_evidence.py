@@ -84,3 +84,31 @@ def test_fitted_policy_handoff_preserves_proof_but_revision_resets_it() -> None:
     state.start_paper("protocol-2", start + timedelta(days=62))
     assert state.paper is not None and state.paper.started_at == start + timedelta(days=62)
     assert state.paper.changes == 0
+
+
+def test_paper_completion_requires_time_activity_profit_and_drawdown() -> None:
+    start = datetime(2026, 8, 1, tzinfo=UTC)
+    state = EvidenceState()
+    state.start_paper("protocol", start)
+
+    too_short = state.record_paper_progress(
+        "protocol", start + timedelta(days=59), changes=101, net_return=0.02, max_drawdown=0.10
+    )
+    assert too_short.passed is False and too_short.failed is False
+
+    too_quiet = state.record_paper_progress(
+        "protocol", start + timedelta(days=61), changes=99, net_return=0.02, max_drawdown=0.10
+    )
+    assert too_quiet.passed is False and too_quiet.failed is False
+
+    passed = state.record_paper_progress(
+        "protocol", start + timedelta(days=61), changes=101, net_return=0.02, max_drawdown=0.10
+    )
+    assert passed.passed is True and passed.failed is False
+
+    breached = EvidenceState()
+    breached.start_paper("breached", start)
+    failed = breached.record_paper_progress(
+        "breached", start + timedelta(minutes=1), changes=0, net_return=-0.21, max_drawdown=0.21
+    )
+    assert failed.failed is True and failed.passed is False

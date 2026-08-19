@@ -9,7 +9,7 @@ Forward Paper Proof with positive Compounded Net Return and no Drawdown Limit br
 
 ## Install
 
-The project uses the committed Python 3.13 `uv.lock` and CPU-only Torch source.
+The project uses the committed Python 3.13 `uv.lock` and the official ROCm 7.2 Torch source.
 
 ```bash
 uv sync --locked
@@ -22,9 +22,9 @@ configuration/data/output paths and the compute device.
 
 ```bash
 uv run netgrowth data-sync
-uv run netgrowth validate --device cpu
-uv run netgrowth holdout --device cpu
-uv run netgrowth paper --device cpu
+uv run netgrowth validate --device cuda
+uv run netgrowth holdout --device cuda
+uv run netgrowth paper --device cuda
 ```
 
 - `data-sync` retains maximum available public Binance-native history from 2020 onward.
@@ -32,10 +32,13 @@ uv run netgrowth paper --device cpu
   Policy Protocol.
 - `holdout` is locked until validation passes and consumes the May-July 2026 Historical Holdout
   exactly once.
-- `paper` is reserved for public-data-only Forward Paper Proof. The current foundation refuses to
-  substitute archive replay for a persistent contemporaneous-midpoint session. Completion requires
-  both 60 days and 100 Qualifying Portfolio Changes. A Policy Revision resets its Proof Clock; a
-  scheduled Sunday Fitted Policy handoff does not.
+- `paper` is the long-running public-data-only Forward Paper Proof operator. It samples closed
+  one-minute public bars and fresh Binance best bid/ask quotes, checkpoints the virtual portfolio,
+  and resumes pending fills after restart. Keep the command running continuously: missed midpoint
+  snapshots are rejected rather than reconstructed. Completion requires both 60 days and 100
+  Qualifying Portfolio Changes. A Policy Revision starts flat and resets its Proof Clock; scheduled
+  Sunday fitting runs alongside minute collection, and its atomic Fitted Policy handoff preserves
+  Current Portfolio without resetting the Proof Clock.
 
 Independent evidence runs start flat with $10,000. Gross Exposure is capped at 100%, absolute
 exposure to one ticker at 50%, and a 20% Drawdown Limit triggers a delayed flattening Risk Stop.
@@ -53,6 +56,11 @@ Raw data is cached under `computed-data/dataset/`. Evidence is content-addressed
 
 The manifest identifies configuration, code, canonical data, and Fitted Policy hashes. Charts are
 generated from equity and trades on demand; no HTML timeline or decision ledger is persisted.
+While proof is active, `evidence-state.json`, `paper-session.json`, and immutable checkpoints under
+`paper-models/` provide repository-anchored, atomic operational recovery independent of
+artifact-run selection.
+The bounded active artifact directory is frozen into a
+content-addressed paper artifact when proof passes or fails.
 
 ## Verification
 

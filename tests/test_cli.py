@@ -12,13 +12,13 @@ def test_cli_exposes_exactly_the_four_policy_workflow_commands() -> None:
     assert set(choices) == {"data-sync", "validate", "holdout", "paper"}
 
 
-def test_cli_allows_paths_and_device_but_rejects_policy_overrides() -> None:
+def test_cli_fixes_evidence_paths_and_rejects_policy_overrides() -> None:
     parser = build_parser()
 
-    arguments = parser.parse_args(["validate", "--data-dir", "/data", "--output-dir", "/runs", "--device", "cpu"])
-    assert arguments.data_dir == "/data"
-    assert arguments.output_dir == "/runs"
+    arguments = parser.parse_args(["validate", "--device", "cpu"])
     assert arguments.device == "cpu"
 
     with pytest.raises(SystemExit):
         parser.parse_args(["validate", "--transaction-cost", "0"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["holdout", "--output-dir", "/fresh-lock"])

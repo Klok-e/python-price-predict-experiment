@@ -27,10 +27,13 @@ normalization_window_bars = 96
 temporal_widths = [32, 64]
 receptive_field_days = [1, 7]
 seeds = [17, 29, 43]
+training_episode_days = 90
+training_epochs = 8
 
 [validation]
 folds = 12
 fold_days = 90
+development_evidence_end = "2026-08-01"
 holdout_start = "2026-05-01"
 holdout_end = "2026-07-31"
 

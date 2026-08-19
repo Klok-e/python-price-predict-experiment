@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import tomllib
 from dataclasses import asdict, dataclass
+from datetime import date
 from hashlib import sha256
 from pathlib import Path
 
@@ -27,16 +28,24 @@ class PolicyConfig:
     temporal_widths: tuple[int, ...]
     receptive_field_days: tuple[int, ...]
     seeds: tuple[int, ...]
+    training_episode_days: int
+    training_epochs: int
     validation_folds: int
     fold_days: int
-    holdout_start: str
-    holdout_end: str
+    development_evidence_end: date
+    holdout_start: date
+    holdout_end: date
     proof_days: int
     proof_changes: int
 
     @property
     def identity_hash(self) -> str:
-        payload = json.dumps(asdict(self), sort_keys=True, separators=(",", ":"))
+        payload = json.dumps(
+            asdict(self),
+            sort_keys=True,
+            separators=(",", ":"),
+            default=lambda value: value.isoformat(),
+        )
         return sha256(payload.encode()).hexdigest()
 
 
@@ -60,10 +69,13 @@ def load_config(path: str | Path = "policy.toml") -> PolicyConfig:
         temporal_widths=tuple(raw["models"]["temporal_widths"]),
         receptive_field_days=tuple(raw["models"]["receptive_field_days"]),
         seeds=tuple(raw["models"]["seeds"]),
+        training_episode_days=raw["models"]["training_episode_days"],
+        training_epochs=raw["models"]["training_epochs"],
         validation_folds=raw["validation"]["folds"],
         fold_days=raw["validation"]["fold_days"],
-        holdout_start=raw["validation"]["holdout_start"],
-        holdout_end=raw["validation"]["holdout_end"],
+        development_evidence_end=date.fromisoformat(raw["validation"]["development_evidence_end"]),
+        holdout_start=date.fromisoformat(raw["validation"]["holdout_start"]),
+        holdout_end=date.fromisoformat(raw["validation"]["holdout_end"]),
         proof_days=raw["proof"]["minimum_days"],
         proof_changes=raw["proof"]["minimum_qualifying_changes"],
     )

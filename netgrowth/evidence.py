@@ -61,6 +61,7 @@ class HoldoutEvidence:
     net_return: float
     max_drawdown: float
     status: str
+    artifact: str | None = None
 
 
 @dataclass
@@ -80,17 +81,35 @@ class PaperEvidence:
 class EvidenceState:
     validated_protocol: str | None = None
     validation_passed: bool = False
+    validated_artifact: str | None = None
+    validated_model_hash: str | None = None
     holdout: HoldoutEvidence | None = None
     paper: PaperEvidence | None = None
     proof_days: int = 60
     proof_changes: int = 100
     drawdown_limit: float = 0.20
 
-    def record_validation(self, protocol_hash: str, *, passed: bool) -> None:
+    def record_validation(
+        self,
+        protocol_hash: str,
+        *,
+        passed: bool,
+        artifact: str | None = None,
+        model_hash: str | None = None,
+    ) -> None:
         self.validated_protocol = protocol_hash
         self.validation_passed = passed
+        self.validated_artifact = artifact if passed else None
+        self.validated_model_hash = model_hash if passed else None
 
-    def consume_holdout(self, *, protocol_hash: str, net_return: float, max_drawdown: float) -> HoldoutEvidence:
+    def consume_holdout(
+        self,
+        *,
+        protocol_hash: str,
+        net_return: float,
+        max_drawdown: float,
+        artifact: str | None = None,
+    ) -> HoldoutEvidence:
         if self.holdout is not None:
             return self.holdout
         if not self.validation_passed or self.validated_protocol != protocol_hash:
@@ -101,6 +120,7 @@ class EvidenceState:
             net_return=net_return,
             max_drawdown=max_drawdown,
             status="passed" if passed else "consumed",
+            artifact=artifact,
         )
         return self.holdout
 
