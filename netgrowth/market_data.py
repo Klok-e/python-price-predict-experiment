@@ -12,6 +12,14 @@ import pandas as pd
 BAR_COLUMNS = ("open", "high", "low", "close", "volume", "taker_buy_volume", "trades")
 
 
+class PublicDataUnavailable(RuntimeError):
+    """A required contemporaneous public observation is absent or unusable."""
+
+
+class PaperObservationGap(PublicDataUnavailable):
+    """The active proof missed at least one irreconstructible midpoint observation."""
+
+
 @dataclass
 class InstrumentData:
     perpetual: pd.DataFrame

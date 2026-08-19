@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import shutil
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
@@ -17,7 +18,7 @@ import pandas as pd
 from .artifacts import RunIdentity, write_artifacts
 from .config import PolicyConfig, load_config
 from .evidence import EvidenceState, HoldoutEvidence, PaperEvidence
-from .market_data import CanonicalDataset, MarketDataAdapter
+from .market_data import CanonicalDataset, MarketDataAdapter, PaperObservationGap
 from .simulation import (
     MarketMinute,
     SimulationState,
@@ -607,12 +608,23 @@ class NetGrowthWorkflow:
             bootstrap_data_hash = canonical.identity_hash
 
         after = session.simulation.previous_timestamp if session is not None else None
-        observation = feed.mark(after)
-        minute = observation.market_minute(after)
+        restarted_from: _PaperSession | None = None
+        try:
+            observation = feed.mark(after)
+            minute = observation.market_minute(after)
+        except PaperObservationGap:
+            if session is None:
+                raise
+            observation = feed.mark(None)
+            minute = observation.market_minute(None)
+            active = self._write_active_paper(session)
+            self._finalize_paper(session, active, "interrupted")
+            shutil.rmtree(active)
+            restarted_from = session
         replay, simulation = advance_simulation(
             [minute],
             simulation_config,
-            session.simulation if session is not None else None,
+            session.simulation if session is not None and restarted_from is None else None,
         )
         if session is None:
             assert bootstrap_model is not None and bootstrap_time is not None and bootstrap_data_hash is not None
@@ -625,11 +637,28 @@ class NetGrowthWorkflow:
                 fitted_data_hashes=(bootstrap_data_hash,),
                 inference_data_hashes=(),
             )
+        elif restarted_from is not None:
+            session = _PaperSession(
+                protocol_hash=self.protocol_hash,
+                simulation=simulation,
+                fitted_at=restarted_from.fitted_at,
+                fitted_model_hash=restarted_from.fitted_model_hash,
+                data_hash=(
+                    restarted_from.fitted_data_hashes[-1]
+                    if restarted_from.fitted_data_hashes
+                    else restarted_from.data_hash
+                ),
+                fitted_data_hashes=restarted_from.fitted_data_hashes,
+                inference_data_hashes=(),
+            )
         else:
             session.simulation = simulation
 
-        self.state.start_paper(self.protocol_hash, minute.timestamp)
-        if bootstrap_model is not None:
+        if restarted_from is not None:
+            self.state.restart_paper(self.protocol_hash, minute.timestamp)
+        else:
+            self.state.start_paper(self.protocol_hash, minute.timestamp)
+        if bootstrap_model is not None or restarted_from is not None:
             assert session.fitted_model_hash is not None
             self.state.record_fitted_policy_handoff(
                 self.protocol_hash,

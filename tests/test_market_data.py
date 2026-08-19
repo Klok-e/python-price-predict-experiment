@@ -16,6 +16,7 @@ from netgrowth.market_data import (
     CanonicalDataset,
     InMemoryMarketData,
     InstrumentData,
+    PaperObservationGap,
     build_market_state,
 )
 
@@ -230,6 +231,53 @@ def test_public_paper_mark_fetches_only_execution_complete_inputs(monkeypatch, t
     assert not any("/api/v3/klines" in url for url in requested)
     assert not any("premiumIndexKlines" in url for url in requested)
     assert not any("openInterestHist" in url for url in requested)
+
+
+def test_public_paper_mark_classifies_a_missing_required_range_as_proof_gap(monkeypatch, tmp_path) -> None:
+    ticker = "BTCUSDT"
+    server_time = pd.Timestamp("2026-08-03 12:03:30", tz="UTC")
+    server_ms = int(server_time.timestamp() * 1_000)
+    latest_open = int(pd.Timestamp("2026-08-03 12:02:00", tz="UTC").timestamp() * 1_000)
+
+    def public_api(url: str, timeout: float):
+        del timeout
+        path = urllib.parse.urlparse(url).path
+        if path == "/fapi/v1/time":
+            return JsonResponse({"serverTime": server_ms})
+        if path == "/fapi/v1/ticker/bookTicker":
+            return JsonResponse([{"symbol": ticker, "bidPrice": "100", "askPrice": "102", "time": server_ms}])
+        if path == "/fapi/v1/klines":
+            return JsonResponse([_kline(latest_open, latest_open + 59_999)])
+        raise AssertionError(f"gap must be rejected before optional requests: {url}")
+
+    monkeypatch.setattr("urllib.request.urlopen", public_api)
+
+    with pytest.raises(PaperObservationGap, match="range has a gap"):
+        PublicPaperAdapter(tmp_path, (ticker,)).mark(datetime(2026, 8, 3, 12, 0, 59, 999000, tzinfo=UTC))
+
+
+def test_public_paper_mark_retries_one_just_closed_candle_during_publication_lag(monkeypatch, tmp_path) -> None:
+    ticker = "BTCUSDT"
+    server_time = pd.Timestamp("2026-08-03 12:03:30", tz="UTC")
+    server_ms = int(server_time.timestamp() * 1_000)
+
+    def public_api(url: str, timeout: float):
+        del timeout
+        path = urllib.parse.urlparse(url).path
+        if path == "/fapi/v1/time":
+            return JsonResponse({"serverTime": server_ms})
+        if path == "/fapi/v1/ticker/bookTicker":
+            return JsonResponse([{"symbol": ticker, "bidPrice": "100", "askPrice": "102", "time": server_ms}])
+        if path == "/fapi/v1/klines":
+            return JsonResponse([])
+        raise AssertionError(f"publication lag must fail before optional requests: {url}")
+
+    monkeypatch.setattr("urllib.request.urlopen", public_api)
+
+    with pytest.raises(PublicDataUnavailable) as caught:
+        PublicPaperAdapter(tmp_path, (ticker,)).mark(datetime(2026, 8, 3, 12, 1, 59, 999000, tzinfo=UTC))
+
+    assert not isinstance(caught.value, PaperObservationGap)
 
 
 def test_public_paper_feed_does_not_invent_a_row_before_the_next_minute_closes(monkeypatch, tmp_path) -> None:

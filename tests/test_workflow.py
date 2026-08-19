@@ -15,7 +15,7 @@ import pytest
 import netgrowth.workflow as workflow_module
 from netgrowth.binance import BookTicker, PaperFeedObservation, PaperInstrumentCatchup
 from netgrowth.config import load_config
-from netgrowth.market_data import InMemoryMarketData
+from netgrowth.market_data import InMemoryMarketData, PaperObservationGap
 from netgrowth.workflow import EvaluationOutcome, NetGrowthWorkflow, PaperPolicyDecision
 
 from .test_market_data import dataset
@@ -75,6 +75,14 @@ class FakePaperFeed:
 
     def mark(self, after):
         del after
+        return self.observation
+
+
+@dataclass
+class FetchGapPaperFeed(FakePaperFeed):
+    def mark(self, after):
+        if after is not None:
+            raise PaperObservationGap("required paper minute range has a gap")
         return self.observation
 
 
@@ -305,6 +313,63 @@ def test_paper_operation_resumes_pending_fill_and_current_portfolio_without_flat
     assert Path(second.artifact_directory, "trades.csv").read_text().count("BTCUSDT") == 1
     session = resumed._load_paper_session()
     assert session is not None and session.inference_data_hashes == (canonical.identity_hash,)
+
+
+def test_paper_gap_archives_interrupted_attempt_and_restarts_flat(tmp_path) -> None:
+    canonical = dataset()
+    backend = FakeBackend()
+    first_open = canonical.instruments["BTCUSDT"].perpetual.index[-1]
+    config = replace(load_config("policy.toml"), development_evidence_end=load_config("policy.toml").holdout_start)
+    workflow = NetGrowthWorkflow(
+        config=config,
+        historical=InMemoryMarketData(canonical, mode="historical"),
+        live=FakePaperFeed(canonical, paper_observation(first_open)),  # type: ignore[arg-type]
+        backend=backend,
+        output_directory=tmp_path,
+        device="cpu",
+    )
+    workflow.validate()
+    workflow.paper()
+    first_session = workflow._load_paper_session()
+    assert first_session is not None and first_session.simulation.pending is not None
+
+    earlier = paper_observation(first_open + pd.Timedelta(minutes=1))
+    latest = paper_observation(first_open + pd.Timedelta(minutes=2))
+    catchup = {
+        ticker: replace(
+            latest.instruments[ticker],
+            perpetual=pd.concat((earlier.instruments[ticker].perpetual, latest.instruments[ticker].perpetual)),
+        )
+        for ticker in canonical.tickers
+    }
+    gap = replace(latest, instruments=catchup)
+    with pytest.raises(PaperObservationGap):
+        gap.market_minute(first_session.simulation.previous_timestamp)
+    resumed = NetGrowthWorkflow(
+        config=config,
+        historical=InMemoryMarketData(canonical, mode="historical"),
+        live=FetchGapPaperFeed(canonical, latest),  # type: ignore[arg-type]
+        backend=backend,
+        output_directory=tmp_path,
+        device="cpu",
+    )
+
+    result = resumed.paper()
+
+    restarted = resumed._load_paper_session()
+    assert result.summary.startswith("Forward Paper Proof in progress")
+    assert restarted is not None
+    assert restarted.simulation.previous_timestamp == (first_open + pd.Timedelta(minutes=3)).to_pydatetime()
+    assert restarted.simulation.pending is None
+    assert set(restarted.simulation.quantities.values()) == {0.0}
+    assert resumed.state.paper is not None
+    assert resumed.state.paper.started_at == restarted.simulation.previous_timestamp
+    frozen_reports = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in (tmp_path / "paper").glob("*/report.json")
+        if not path.parent.name.startswith("active-")
+    ]
+    assert any(report["status"] == "interrupted" for report in frozen_reports)
 
 
 def test_sunday_refit_does_not_block_minute_collection_or_reset_proof_clock(tmp_path) -> None:

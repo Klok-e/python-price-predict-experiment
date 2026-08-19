@@ -35,10 +35,24 @@ uv run netgrowth paper --device cuda
 - `paper` is the long-running public-data-only Forward Paper Proof operator. It samples closed
   one-minute public bars and fresh Binance best bid/ask quotes, checkpoints the virtual portfolio,
   and resumes pending fills after restart. Keep the command running continuously: missed midpoint
-  snapshots are rejected rather than reconstructed. Completion requires both 60 days and 100
-  Qualifying Portfolio Changes. A Policy Revision starts flat and resets its Proof Clock; scheduled
-  Sunday fitting runs alongside minute collection, and its atomic Fitted Policy handoff preserves
-  Current Portfolio without resetting the Proof Clock.
+  snapshots are rejected rather than reconstructed, the interrupted attempt is frozen for audit,
+  and operation resumes from a new Flat Start and Proof Clock. Completion requires both 60 days and
+  100 Qualifying Portfolio Changes. A Policy Revision also starts flat and resets its Proof Clock;
+  scheduled Sunday fitting runs alongside minute collection, and its atomic Fitted Policy handoff
+  preserves Current Portfolio without resetting the Proof Clock.
+
+For an unattended proof on this workstation, link and enable the checked-in user service, then
+enable user lingering so it starts during boot rather than waiting for an interactive login:
+
+```bash
+systemctl --user link "$PWD/systemd/netgrowth-paper-proof.service"
+systemctl --user enable --now netgrowth-paper-proof.service
+loginctl enable-linger "$USER"
+```
+
+The service executes the already synchronized locked environment directly, restarts transient
+failures after 15 seconds, and stops after three failures in ten minutes rather than entering an
+unbounded loop on a persistent defect.
 
 Independent evidence runs start flat with $10,000. Gross Exposure is capped at 100%, absolute
 exposure to one ticker at 50%, and a 20% Drawdown Limit triggers a delayed flattening Risk Stop.

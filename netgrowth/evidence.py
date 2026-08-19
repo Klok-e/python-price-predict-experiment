@@ -126,11 +126,16 @@ class EvidenceState:
 
     def start_paper(self, protocol_hash: str, started_at: datetime) -> PaperEvidence:
         if self.paper is None or self.paper.protocol_hash != protocol_hash:
-            self.paper = PaperEvidence(
-                protocol_hash=protocol_hash,
-                started_at=started_at,
-                observed_at=started_at,
-            )
+            return self.restart_paper(protocol_hash, started_at)
+        return self.paper
+
+    def restart_paper(self, protocol_hash: str, started_at: datetime) -> PaperEvidence:
+        """Start a fresh Flat Start and Proof Clock after continuity becomes unprovable."""
+        self.paper = PaperEvidence(
+            protocol_hash=protocol_hash,
+            started_at=started_at,
+            observed_at=started_at,
+        )
         return self.paper
 
     def record_paper_progress(

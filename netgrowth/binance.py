@@ -19,7 +19,7 @@ from typing import Any, Literal, cast
 import pandas as pd
 
 from .config import PolicyConfig
-from .market_data import CanonicalDataset, InstrumentData
+from .market_data import CanonicalDataset, InstrumentData, PaperObservationGap, PublicDataUnavailable
 from .simulation import MarketMinute
 
 ARCHIVE = "https://data.binance.vision/data"
@@ -167,10 +167,6 @@ class HistoricalArchiveAdapter:
         return dataset
 
 
-class PublicDataUnavailable(RuntimeError):
-    """A required contemporaneous public observation is absent or unusable."""
-
-
 @dataclass(frozen=True)
 class BookTicker:
     ticker: str
@@ -271,7 +267,7 @@ class PaperFeedObservation:
                 selected[ticker] = frame.iloc[-1]
                 continue
             if len(frame) != 1 or frame.index[0] != expected_open:
-                raise PublicDataUnavailable("missed one-minute paper marks cannot be reconstructed")
+                raise PaperObservationGap("missed one-minute paper marks cannot be reconstructed")
             selected[ticker] = frame.iloc[0]
         open_times = {row.name for row in selected.values()}
         if len(open_times) != 1:
@@ -389,6 +385,7 @@ class PublicPaperAdapter:
             )
         cursor = first_open
         rows: list[list[object]] = []
+        irreconstructible_gap = after is not None and latest_open > first_open
         page_limit = 1000 if base == SPOT_API else 1500
         while cursor <= latest_open:
             payload = self._json(
@@ -413,6 +410,8 @@ class PublicPaperAdapter:
                 raise PublicDataUnavailable(f"{ticker} public one-minute pagination did not advance")
             cursor = next_cursor
         if not rows:
+            if irreconstructible_gap:
+                raise PaperObservationGap(f"{ticker} required paper minute range is missing")
             raise PublicDataUnavailable(f"{ticker} required public one-minute rows are missing")
         raw = pd.DataFrame(rows, columns=KLINE_COLUMNS)
         raw.index = pd.DatetimeIndex(pd.to_datetime(pd.to_numeric(raw["open_time"]), unit="ms", utc=True))
@@ -425,6 +424,8 @@ class PublicPaperAdapter:
         raw = raw.loc[~raw.index.duplicated(keep="last")].sort_index()
         expected = pd.date_range(first_open, latest_open, freq="min", tz="UTC")
         if not raw.index.equals(expected):
+            if irreconstructible_gap:
+                raise PaperObservationGap(f"{ticker} required paper minute range has a gap")
             raise PublicDataUnavailable(f"{ticker} required closed one-minute rows are stale or missing")
         columns = ("open", "high", "low", "close", "volume", "taker_buy_volume", "trades")
         frame = raw.loc[:, list(columns)].apply(pd.to_numeric, errors="coerce")

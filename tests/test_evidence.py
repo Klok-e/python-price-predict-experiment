@@ -86,6 +86,27 @@ def test_fitted_policy_handoff_preserves_proof_but_revision_resets_it() -> None:
     assert state.paper.changes == 0
 
 
+def test_operational_gap_restarts_same_protocol_proof_clock() -> None:
+    state = EvidenceState()
+    start = datetime(2026, 8, 1, tzinfo=UTC)
+    state.start_paper("protocol", start)
+    state.record_paper_progress(
+        "protocol",
+        start + timedelta(days=2),
+        changes=4,
+        net_return=0.01,
+        max_drawdown=0.02,
+    )
+
+    restarted = state.restart_paper("protocol", start + timedelta(days=3))
+
+    assert restarted.started_at == start + timedelta(days=3)
+    assert restarted.observed_at == restarted.started_at
+    assert restarted.changes == 0
+    assert restarted.net_return == 0.0
+    assert restarted.max_drawdown == 0.0
+
+
 def test_paper_completion_requires_time_activity_profit_and_drawdown() -> None:
     start = datetime(2026, 8, 1, tzinfo=UTC)
     state = EvidenceState()
