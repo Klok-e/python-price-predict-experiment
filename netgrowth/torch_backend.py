@@ -196,8 +196,7 @@ def _training_step(
     )
 
 
-@torch.compile(fullgraph=True)
-def _compiled_training_rollout(
+def _scan_training_rollout(
     market_logits: torch.Tensor,
     current_matrix: torch.Tensor,
     latency_returns: torch.Tensor,
@@ -231,7 +230,7 @@ def _training_rollout(
     """Roll a differentiable policy over the actual marked portfolio seen at each step."""
     if market_logits.shape != returns.shape or returns.shape != funding.shape or returns.shape != latency_returns.shape:
         raise ValueError("training state, latency, returns, and funding must share one timeline")
-    weights, turnovers, simple_growth, current_portfolios = _compiled_training_rollout(
+    weights, turnovers, simple_growth, current_portfolios = _scan_training_rollout(
         market_logits,
         current_matrix,
         latency_returns,

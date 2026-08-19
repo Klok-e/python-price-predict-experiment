@@ -172,6 +172,33 @@ def test_training_latency_return_belongs_to_the_pre_fill_portfolio() -> None:
     assert path.simple_growth[0].item() == pytest.approx(0.0)
 
 
+@pytest.mark.skipif(not torch.cuda.is_available() or torch.version.hip is None, reason="requires a ROCm GPU")
+def test_full_training_episode_backward_is_stable_on_rocm() -> None:
+    torch.manual_seed(17)
+    device = "cuda"
+    steps = 90 * 96
+    logits = torch.randn(steps, 4, device=device, requires_grad=True)
+    current_matrix = torch.randn(4, 4, device=device, requires_grad=True)
+    latency = torch.randn(steps, 4, device=device) * 0.001
+    returns = torch.randn(steps, 4, device=device) * 0.01
+    funding = torch.zeros_like(returns)
+
+    path = _training_rollout(
+        logits,
+        current_matrix,
+        latency,
+        returns,
+        funding,
+        transaction_cost_rate=0.0007,
+        minimum_turnover=0.01,
+    )
+    (-path.simple_growth.sum()).backward()
+    torch.cuda.synchronize()
+
+    assert logits.grad is not None
+    assert current_matrix.grad is not None
+
+
 def test_training_funding_uses_event_mark_notional() -> None:
     from tests.test_market_data import dataset
 
