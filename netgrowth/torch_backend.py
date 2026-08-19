@@ -217,6 +217,9 @@ def _scan_training_rollout(
     return cast(tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], outputs)
 
 
+_compiled_cpu_training_rollout = torch.compile(_scan_training_rollout, fullgraph=True)
+
+
 def _training_rollout(
     market_logits: torch.Tensor,
     current_matrix: torch.Tensor,
@@ -230,7 +233,7 @@ def _training_rollout(
     """Roll a differentiable policy over the actual marked portfolio seen at each step."""
     if market_logits.shape != returns.shape or returns.shape != funding.shape or returns.shape != latency_returns.shape:
         raise ValueError("training state, latency, returns, and funding must share one timeline")
-    weights, turnovers, simple_growth, current_portfolios = _scan_training_rollout(
+    arguments = (
         market_logits,
         current_matrix,
         latency_returns,
@@ -239,6 +242,11 @@ def _training_rollout(
         torch.tensor(transaction_cost_rate, device=returns.device),
         torch.tensor(minimum_turnover, device=returns.device),
     )
+    if returns.is_cuda and torch.version.hip is not None:
+        cpu_outputs = _compiled_cpu_training_rollout(*(value.to("cpu") for value in arguments))
+        weights, turnovers, simple_growth, current_portfolios = (value.to(returns.device) for value in cpu_outputs)
+    else:
+        weights, turnovers, simple_growth, current_portfolios = _scan_training_rollout(*arguments)
     return _TrainingRollout(
         weights=weights,
         turnover=turnovers,

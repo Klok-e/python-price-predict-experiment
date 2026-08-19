@@ -195,6 +195,7 @@ def test_full_training_episode_backward_is_stable_on_rocm() -> None:
     (-path.simple_growth.sum()).backward()
     torch.cuda.synchronize()
 
+    assert path.weights.device.type == "cuda"
     assert logits.grad is not None
     assert current_matrix.grad is not None
 
