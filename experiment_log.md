@@ -77,3 +77,24 @@ Append each actual model experiment below. Infrastructure tests are not experime
   `d5bcc04a90001eabbde7b860dfe311cca7da95c623bf6cd57ba37df0ead0cc53`.
   Fold returns were +2.905684%, +7.753838%, +8.070182%, +0.257837%, +1.481497%, +0.471566%,
   -0.070855%, +2.066533%, +0.849274%, -3.030506%, -0.750526%, and -1.279821%.
+
+### 2026-08-20 - Causal delayed-fill protocol
+
+- Configuration hash: `03722c682b8d35618bc2c5a6ab9c656665a330d6acff2dad38a0c71142136536`
+- Code hash: `de5778920ae6ce8e68670de7dd922f6d44152b2865d8d883e914312183e2f51e`
+- Data hash: `6557b79293d8498363d1146331e420dd159f912fd01359d5dac7d03ffb478f28`
+- Model hash: `599fd50d2713a1a00f722d5c32024036d98831f88d11c435d7c5c2e14c75fc4a`
+- Walk-Forward Compounded Net Return: +29.026712%; selected actual three-seed TCN ensemble,
+  width 64, seven-day receptive field; 300 Qualifying Portfolio Changes
+- Maximum Drawdown by fold: 1.819838%, 7.887010%, 4.268140%, 4.339552%, 2.133313%,
+  2.162004%, 1.463445%, 2.371882%, 7.676047%, 5.231659%, 4.796008%, and 3.680513%;
+  no Risk Stop triggered
+- Turnover / costs / funding: $60,987.06 turnover notional, $42.69 all-in transaction cost, and
+  -$221.76 funding cashflow
+- Historical Holdout or Forward Paper Proof state: the initial holdout remains permanently
+  consumed; this revised protocol has not used a new holdout and requires fresh Forward Paper Proof
+- Verdict: Validated Policy Protocol for development; fresh Forward Paper Proof required
+- Notes: Validation result hash
+  `4a78ca67b4eb60b20ddca90044fbad97bc2e674ef21941438a605de29ae0f721`.
+  Fold returns were +4.998817%, +12.600135%, +9.569493%, +0.544924%, +1.509606%, +0.308431%,
+  -0.436581%, +3.435139%, +1.710661%, -4.709000%, -1.174082%, and -1.370959%.
