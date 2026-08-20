@@ -98,3 +98,27 @@ Append each actual model experiment below. Infrastructure tests are not experime
   `4a78ca67b4eb60b20ddca90044fbad97bc2e674ef21941438a605de29ae0f721`.
   Fold returns were +4.998817%, +12.600135%, +9.569493%, +0.544924%, +1.509606%, +0.308431%,
   -0.436581%, +3.435139%, +1.710661%, -4.709000%, -1.174082%, and -1.370959%.
+
+### 2026-08-20 - Gap-safe unattended paper protocol
+
+- Configuration hash: `03722c682b8d35618bc2c5a6ab9c656665a330d6acff2dad38a0c71142136536`
+- Code hash: `d87bc84f00375040d847cba756dbd175b06a11834f8ea4bf4bb16598176abf73`
+- Data hash: `6557b79293d8498363d1146331e420dd159f912fd01359d5dac7d03ffb478f28`
+- Model hash: `599fd50d2713a1a00f722d5c32024036d98831f88d11c435d7c5c2e14c75fc4a`
+- Walk-Forward Compounded Net Return: +29.026712%; selected actual three-seed TCN ensemble,
+  width 64, seven-day receptive field; 300 Qualifying Portfolio Changes
+- Maximum Drawdown by fold: 1.819838%, 7.887010%, 4.268140%, 4.339552%, 2.133313%,
+  2.162004%, 1.463445%, 2.371882%, 7.676047%, 5.231659%, 4.796008%, and 3.680513%;
+  no Risk Stop triggered
+- Turnover / costs / funding: $60,987.06 turnover notional, $42.69 all-in transaction cost, and
+  -$221.76 funding cashflow
+- Historical Holdout or Forward Paper Proof state: the initial holdout remains permanently
+  consumed; fresh proof for protocol
+  `7bed0db0dc52cd736251e29699b69928c22c2f930a5a9a0f09fcb7e06b91b45c` started flat at
+  `2026-08-20T01:22:00+00:00` and advanced through `2026-08-20T01:25:00+00:00` with zero restarts
+- Verdict: Validated Policy Protocol; Forward Paper Proof is actively accumulating final evidence
+- Notes: immutable validation artifact `73d9227a245d1eba`, result hash
+  `4a78ca67b4eb60b20ddca90044fbad97bc2e674ef21941438a605de29ae0f721`.
+  The code-only revision bounds contemporaneous mark latency, archives and resets interrupted proof
+  attempts from a Flat Start, distinguishes transient publication lag from irreconstructible gaps,
+  and runs through a reboot-persistent user service. Historical policy metrics remain bit-identical.

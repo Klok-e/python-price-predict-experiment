@@ -58,3 +58,9 @@ reused holdout evidence, or partial paper time for that outcome.
   collects only execution-complete mark inputs and fetches all four tickers concurrently; both final
   review axes are clean and the regression proves request overlap. Because runtime code identity is
   part of the Policy Protocol, fresh validation must finish before a new flat Proof Clock starts.
+- 2026-08-20: final gap-safe protocol `7bed0db0...` passed fresh validation in immutable artifact
+  `73d9227a245d1eba` at +29.026712% Compounded Net Return, 7.887010% Maximum Drawdown, and 300
+  Qualifying Portfolio Changes. Fresh Forward Paper Proof started flat at `2026-08-20T01:22:00Z`
+  under the enabled `netgrowth-paper-proof.service`, advanced through three consecutive minutes with
+  zero restarts, and is reboot-persistent with user lingering enabled. The 60-day / 100-change /
+  positive-return / no-breach gate remains open.
