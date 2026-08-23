@@ -185,7 +185,7 @@ Routine infrastructure tests are not experiments.
 - Notes: the legacy archive passed `sha256sum -c SHA256SUMS`; the obsolete unit is `not-found` and
   inactive. The lingering replacement `netgrowth-paper-dashboard.service` is enabled and active on
   `127.0.0.1:8765`. `uv lock --check`, Ruff format/check, strict mypy, and the complete deterministic
-  suite passed (`100 passed, 1 skipped, 14 warnings`); the built wheel contains all local dashboard
+  suite passed (`101 passed, 1 skipped, 14 warnings`); the built wheel contains all local dashboard
   assets. Agent-browser verified Live, History, System, Policy Protocol segments, and exact event
   detail without JavaScript errors. RX 7800 XT ROCm fitting and inference were observed through
   `/dev/kfd`, `renderD128`, loaded HIP/rocBLAS/MIOpen libraries, VRAM counters, the immutable weekly
