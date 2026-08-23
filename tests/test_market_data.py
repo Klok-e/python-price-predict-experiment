@@ -233,7 +233,7 @@ def test_public_paper_mark_fetches_only_execution_complete_inputs(monkeypatch, t
     assert not any("openInterestHist" in url for url in requested)
 
 
-def test_public_paper_mark_classifies_a_missing_required_range_as_proof_gap(monkeypatch, tmp_path) -> None:
+def test_public_paper_mark_classifies_a_missing_required_range_as_observation_gap(monkeypatch, tmp_path) -> None:
     ticker = "BTCUSDT"
     server_time = pd.Timestamp("2026-08-03 12:03:30", tz="UTC")
     server_ms = int(server_time.timestamp() * 1_000)

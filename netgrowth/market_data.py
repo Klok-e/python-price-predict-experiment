@@ -17,7 +17,7 @@ class PublicDataUnavailable(RuntimeError):
 
 
 class PaperObservationGap(PublicDataUnavailable):
-    """The active proof missed at least one irreconstructible midpoint observation."""
+    """A legacy contemporaneous feed missed an irreconstructible executable quote."""
 
 
 @dataclass

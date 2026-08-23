@@ -54,7 +54,6 @@ def test_direct_policy_trains_and_validates_positive_development_evidence(tmp_pa
     workflow = NetGrowthWorkflow(
         config=config,
         historical=InMemoryMarketData(canonical, mode="historical"),
-        live=InMemoryMarketData(canonical, mode="live"),
         backend=TorchEvaluationBackend(tmp_path),
         output_directory=tmp_path,
         device="cpu",

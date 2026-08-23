@@ -3,6 +3,9 @@ tickers = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
 market = "Binance USD-M perpetuals"
 history_start = "2020-01-01"
 
+[account]
+currency = "USD"
+
 [timing]
 decision_minutes = 15
 decision_latency_seconds = 60
@@ -36,7 +39,3 @@ fold_days = 90
 development_evidence_end = "2026-08-01"
 holdout_start = "2026-05-01"
 holdout_end = "2026-07-31"
-
-[proof]
-minimum_days = 60
-minimum_qualifying_changes = 100

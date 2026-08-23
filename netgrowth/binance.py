@@ -294,7 +294,7 @@ class PaperFeedObservation:
 
 @dataclass
 class PublicPaperAdapter:
-    """Contemporaneous, unauthenticated Binance feed for Forward Paper Proof."""
+    """Contemporaneous, unauthenticated Binance feed for the Paper Account."""
 
     root: Path
     tickers: tuple[str, ...]

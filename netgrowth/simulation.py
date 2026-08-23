@@ -98,7 +98,7 @@ class SimulationState:
     turnover_notional: float = 0.0
     transaction_cost: float = 0.0
     funding_cashflow: float = 0.0
-    qualifying_portfolio_changes: int = 0
+    executable_portfolio_changes: int = 0
     previous_timestamp: datetime | None = None
     previous_marks: dict[str, float] | None = None
     pending: PendingPortfolioChange | None = None
@@ -116,7 +116,7 @@ class SimulationState:
             "turnover_notional": self.turnover_notional,
             "transaction_cost": self.transaction_cost,
             "funding_cashflow": self.funding_cashflow,
-            "qualifying_portfolio_changes": self.qualifying_portfolio_changes,
+            "executable_portfolio_changes": self.executable_portfolio_changes,
             "previous_timestamp": self.previous_timestamp,
             "previous_marks": self.previous_marks,
             "pending": (
@@ -151,7 +151,7 @@ class SimulationState:
             turnover_notional=float(raw["turnover_notional"]),
             transaction_cost=float(raw["transaction_cost"]),
             funding_cashflow=float(raw["funding_cashflow"]),
-            qualifying_portfolio_changes=int(raw["qualifying_portfolio_changes"]),
+            executable_portfolio_changes=int(raw["executable_portfolio_changes"]),
             previous_timestamp=datetime.fromisoformat(raw["previous_timestamp"]) if raw["previous_timestamp"] else None,
             previous_marks=(
                 {key: float(value) for key, value in raw["previous_marks"].items()} if raw["previous_marks"] else None
@@ -180,7 +180,7 @@ class ReplayResult:
     turnover_notional: float
     transaction_cost: float
     funding_cashflow: float
-    qualifying_portfolio_changes: int
+    executable_portfolio_changes: int
     risk_stop_triggered: bool
     risk_stop_time: datetime | None
     trades: tuple[Trade, ...]
@@ -382,7 +382,7 @@ def advance_simulation(
                         )
                     )
                 if not forced:
-                    state.qualifying_portfolio_changes += 1
+                    state.executable_portfolio_changes += 1
                 else:
                     state.flattened = True
             state.pending = None
@@ -424,7 +424,7 @@ def advance_simulation(
         turnover_notional=state.turnover_notional,
         transaction_cost=state.transaction_cost,
         funding_cashflow=state.funding_cashflow,
-        qualifying_portfolio_changes=state.qualifying_portfolio_changes,
+        executable_portfolio_changes=state.executable_portfolio_changes,
         risk_stop_triggered=state.risk_stop_time is not None,
         risk_stop_time=state.risk_stop_time,
         trades=tuple(trades),

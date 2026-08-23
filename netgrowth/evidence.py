@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from math import prod
 from statistics import median
 
@@ -65,28 +64,12 @@ class HoldoutEvidence:
 
 
 @dataclass
-class PaperEvidence:
-    protocol_hash: str
-    started_at: datetime
-    observed_at: datetime
-    changes: int = 0
-    net_return: float = 0.0
-    max_drawdown: float = 0.0
-    fitted_policy_hash: str | None = None
-    passed: bool = False
-    failed: bool = False
-
-
-@dataclass
 class EvidenceState:
     validated_protocol: str | None = None
     validation_passed: bool = False
     validated_artifact: str | None = None
     validated_model_hash: str | None = None
     holdout: HoldoutEvidence | None = None
-    paper: PaperEvidence | None = None
-    proof_days: int = 60
-    proof_changes: int = 100
     drawdown_limit: float = 0.20
 
     def record_validation(
@@ -123,45 +106,3 @@ class EvidenceState:
             artifact=artifact,
         )
         return self.holdout
-
-    def start_paper(self, protocol_hash: str, started_at: datetime) -> PaperEvidence:
-        if self.paper is None or self.paper.protocol_hash != protocol_hash:
-            return self.restart_paper(protocol_hash, started_at)
-        return self.paper
-
-    def restart_paper(self, protocol_hash: str, started_at: datetime) -> PaperEvidence:
-        """Start a fresh Flat Start and Proof Clock after continuity becomes unprovable."""
-        self.paper = PaperEvidence(
-            protocol_hash=protocol_hash,
-            started_at=started_at,
-            observed_at=started_at,
-        )
-        return self.paper
-
-    def record_paper_progress(
-        self,
-        protocol_hash: str,
-        observed_at: datetime,
-        *,
-        changes: int,
-        net_return: float,
-        max_drawdown: float,
-    ) -> PaperEvidence:
-        if self.paper is None or self.paper.protocol_hash != protocol_hash:
-            raise ValueError("Forward Paper Proof has not started for this Policy Protocol")
-        self.paper.observed_at = observed_at
-        self.paper.changes = changes
-        self.paper.net_return = net_return
-        self.paper.max_drawdown = max_drawdown
-        elapsed_days = (observed_at - self.paper.started_at).total_seconds() / 86_400.0
-        self.paper.failed = max_drawdown > self.drawdown_limit
-        complete = elapsed_days >= self.proof_days and changes >= self.proof_changes
-        if complete and net_return <= 0.0:
-            self.paper.failed = True
-        self.paper.passed = complete and net_return > 0.0 and not self.paper.failed
-        return self.paper
-
-    def record_fitted_policy_handoff(self, protocol_hash: str, *, fitted_policy_hash: str) -> None:
-        if self.paper is None or self.paper.protocol_hash != protocol_hash:
-            raise ValueError("Policy Handoff requires an active matching Proof Clock")
-        self.paper.fitted_policy_hash = fitted_policy_hash

@@ -8,10 +8,12 @@ version = "0.1.0"
 description = "Causal direct Net Log Growth portfolio-policy experiment"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+  "fastapi>=0.115",
   "numpy>=2.2",
   "pandas>=2.2",
   "torch==2.13.0+rocm7.2",
   "triton-rocm==3.7.1; sys_platform == 'linux'",
+  "uvicorn>=0.34",
 ]
 
 [project.scripts]
@@ -19,6 +21,7 @@ netgrowth = "netgrowth.cli:main"
 
 [dependency-groups]
 dev = [
+  "httpx>=0.28",
   "mypy>=1.15",
   "pandas-stubs>=2.2",
   "pytest>=8.3",

@@ -3,13 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import sys
-import time
 from collections.abc import Sequence
-from datetime import UTC, datetime
-
-_PAPER_DATA_RETRY_ATTEMPTS = 30
-_PAPER_DATA_RETRY_DELAY_SECONDS = 2.0
 
 
 def _paths(parser: argparse.ArgumentParser, *, device: bool = True) -> None:
@@ -24,50 +18,38 @@ def build_parser() -> argparse.ArgumentParser:
     _paths(commands.add_parser("data-sync", help="synchronize public Binance-native data"), device=False)
     _paths(commands.add_parser("validate", help="run purged prequential validation"))
     _paths(commands.add_parser("holdout", help="evaluate the frozen Historical Holdout once"))
-    _paths(commands.add_parser("paper", help="run public-data-only Forward Paper Proof"))
+    serve = commands.add_parser("serve", help="run the persistent local Paper Account dashboard")
+    _paths(serve)
+    serve.add_argument("--data-directory", default="computed-data/dataset")
+    serve.add_argument("--operational-directory", default="computed-data/paper-dashboard")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8765)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    from .market_data import PaperObservationGap, PublicDataUnavailable
+    arguments = build_parser().parse_args(argv)
+    if arguments.command == "serve":
+        from .paper_dashboard.production import run_dashboard
+
+        run_dashboard(
+            config_path=arguments.config,
+            data_directory=arguments.data_directory,
+            operational_directory=arguments.operational_directory,
+            host=arguments.host,
+            port=arguments.port,
+            device=arguments.device,
+        )
+        return 0
+
     from .workflow import NetGrowthWorkflow
 
-    arguments = build_parser().parse_args(argv)
     workflow = NetGrowthWorkflow.from_paths(
         config_path=arguments.config,
         data_directory="computed-data/dataset",
         output_directory="computed-data/evidence",
         device=getattr(arguments, "device", "cpu"),
     )
-    if arguments.command == "paper":
-        consecutive_data_failures = 0
-        while True:
-            try:
-                result = workflow.paper()
-            except PaperObservationGap:
-                raise
-            except PublicDataUnavailable as error:
-                consecutive_data_failures += 1
-                if consecutive_data_failures == 1:
-                    print(f"public paper data unavailable; retrying in-process: {error}", file=sys.stderr, flush=True)
-                if consecutive_data_failures >= _PAPER_DATA_RETRY_ATTEMPTS:
-                    print(
-                        f"public paper data unavailable after {_PAPER_DATA_RETRY_ATTEMPTS} attempts; "
-                        f"exiting for service recovery: {error}",
-                        file=sys.stderr,
-                        flush=True,
-                    )
-                    raise
-                time.sleep(_PAPER_DATA_RETRY_DELAY_SECONDS)
-                continue
-            consecutive_data_failures = 0
-            print(result.summary, flush=True)
-            if result.terminal:
-                break
-            now = datetime.now(UTC).timestamp()
-            next_minute = (int(now) // 60 + 1) * 60 + 2
-            time.sleep(max(0.0, next_minute - now))
-    else:
-        result = getattr(workflow, arguments.command.replace("-", "_"))()
-        print(result.summary)
+    result = getattr(workflow, arguments.command.replace("-", "_"))()
+    print(result.summary)
     return 0

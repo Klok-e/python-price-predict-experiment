@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="description" content="Local persistent paper-account dashboard">
+    <title>Net Growth · Paper account</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/financial-chart.js" defer></script>
+    <script src="/dashboard.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to dashboard content</a>
+    <header class="site-header">
+      <div class="brand-lockup">
+        <div class="brand-mark" aria-hidden="true">NG</div>
+        <div>
+          <p class="eyebrow">Persistent paper trading</p>
+          <p class="brand-name">Net Growth</p>
+        </div>
+      </div>
+      <div class="header-readouts">
+        <div id="freshness-pill" class="status-pill status-neutral">Connecting</div>
+        <div class="clock-block">
+          <span id="kyiv-clock" class="clock-primary">--:--:--</span>
+          <span id="utc-clock" class="clock-secondary">--:--:-- UTC</span>
+        </div>
+        <span class="local-badge">Localhost only</span>
+      </div>
+    </header>
+
+    <div id="connection-banner" class="connection-banner" role="alert" hidden></div>
+
+    <nav class="view-nav" aria-label="Dashboard views">
+      <div class="tab-list" role="tablist" aria-label="Paper account dashboard">
+        <button id="tab-live" class="view-tab" type="button" role="tab" aria-controls="view-live" aria-selected="true" data-view="live">Live</button>
+        <button id="tab-history" class="view-tab" type="button" role="tab" aria-controls="view-history" aria-selected="false" data-view="history" tabindex="-1">History</button>
+        <button id="tab-system" class="view-tab" type="button" role="tab" aria-controls="view-system" aria-selected="false" data-view="system" tabindex="-1">System</button>
+      </div>
+      <p class="refresh-note">Financial state refreshes every minute · clocks update every second</p>
+    </nav>
+
+    <main id="main-content" class="page-shell">
+      <section id="view-live" class="view-panel" role="tabpanel" aria-labelledby="tab-live">
+        <div class="view-heading">
+          <div>
+            <p class="eyebrow">Live operating view</p>
+            <h1>Paper account</h1>
+            <p id="live-subtitle" class="view-subtitle">Loading the durable account snapshot…</p>
+          </div>
+          <div id="account-controls" class="account-controls" aria-label="Paper account lifecycle controls">
+            <button class="button button-secondary" type="button" data-control="pause">Pause</button>
+            <button class="button button-secondary" type="button" data-control="resume">Resume</button>
+            <button class="button button-warning" type="button" data-control="flatten">Flatten and pause</button>
+            <button class="button button-danger" type="button" data-control="reset">Manual reset</button>
+          </div>
+        </div>
+
+        <section id="live-overview" class="hero-grid" aria-label="Account and service overview"></section>
+
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Marked account</p>
+            <h2>Account and risk</h2>
+          </div>
+          <p>Marked Equity is authoritative; component P&amp;L is a reconciliation aid.</p>
+        </div>
+        <section id="account-metrics" class="metric-grid" aria-label="Account metrics"></section>
+        <section id="risk-metrics" class="metric-grid metric-grid-compact" aria-label="Risk metrics"></section>
+
+        <div class="dashboard-grid">
+          <section class="surface positions-surface" aria-labelledby="positions-heading">
+            <div class="surface-heading">
+              <div>
+                <p class="eyebrow">Current portfolio</p>
+                <h2 id="positions-heading">Positions</h2>
+              </div>
+              <p id="positions-summary" class="surface-note"></p>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Instrument</th>
+                    <th scope="col">Side</th>
+                    <th scope="col" class="numeric">Quantity</th>
+                    <th scope="col" class="numeric">Mark</th>
+                    <th scope="col" class="numeric">Notional</th>
+                    <th scope="col" class="numeric">Current wt.</th>
+                    <th scope="col" class="numeric">Target wt.</th>
+                    <th scope="col" class="numeric">Avg. entry</th>
+                    <th scope="col" class="numeric">Realized P&amp;L</th>
+                    <th scope="col" class="numeric">Unrealized P&amp;L</th>
+                  </tr>
+                </thead>
+                <tbody id="positions-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="surface activity-surface" aria-labelledby="activity-heading">
+            <div class="surface-heading">
+              <div>
+                <p class="eyebrow">Policy and operator</p>
+                <h2 id="activity-heading">Activity</h2>
+              </div>
+            </div>
+            <div id="activity-metrics" class="activity-grid"></div>
+            <div class="subsection-heading">
+              <h3>Recent material events</h3>
+              <span>Newest first</span>
+            </div>
+            <ol id="recent-activity" class="event-list"></ol>
+          </section>
+        </div>
+
+        <section class="surface chart-surface" aria-labelledby="chart-heading">
+          <div class="surface-heading chart-toolbar">
+            <div>
+              <p class="eyebrow">Synchronized financial history</p>
+              <h2 id="chart-heading">Price and portfolio</h2>
+            </div>
+            <div class="chart-selectors">
+              <label>
+                <span>Selected ticker</span>
+                <select id="ticker-select" aria-label="Selected ticker"></select>
+              </label>
+              <fieldset class="range-selector">
+                <legend>Chart range</legend>
+                <button type="button" data-range="current" aria-pressed="true">Window</button>
+                <button type="button" data-range="24h" aria-pressed="false">24h</button>
+                <button type="button" data-range="7d" aria-pressed="false">7d</button>
+                <button type="button" data-range="full" aria-pressed="false">Full</button>
+              </fieldset>
+            </div>
+          </div>
+          <div class="chart-legend" aria-label="Chart legend">
+            <span><i class="legend-price"></i>Price</span>
+            <span><i class="legend-current"></i>Current weight / account equity</span>
+            <span><i class="legend-target"></i>Target weight / equal-weight benchmark</span>
+            <span><i class="legend-cash"></i>Cash benchmark</span>
+            <span><i class="legend-gap"></i>Downtime / reconstructed gap</span>
+          </div>
+          <div id="financial-chart" class="financial-chart" aria-busy="true"></div>
+          <p class="chart-footnote">Material markers are never downsampled. Activate a marker for its durable event, exact Decision Record, execution outcome, and attribution.</p>
+        </section>
+      </section>
+
+      <section id="view-history" class="view-panel" role="tabpanel" aria-labelledby="tab-history" hidden>
+        <div class="view-heading">
+          <div>
+            <p class="eyebrow">Durable event ledger</p>
+            <h1>Account history</h1>
+            <p class="view-subtitle">Policy decisions, executions, funding, recovery, lifecycle interventions, and immutable archives.</p>
+          </div>
+          <div class="history-filters" aria-label="History filters">
+            <label>
+              <span>Paper account</span>
+              <select id="account-select"></select>
+            </label>
+            <label>
+              <span>Event type</span>
+              <select id="event-type-select">
+                <option value="all">All material events</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <section id="history-comparison" class="metric-grid metric-grid-compact" aria-label="Account comparison"></section>
+        <section class="surface" aria-labelledby="protocol-segments-heading">
+          <div class="surface-heading">
+            <div>
+              <p class="eyebrow">Compatible revision boundaries</p>
+              <h2 id="protocol-segments-heading">Policy Protocol segments</h2>
+            </div>
+          </div>
+          <div id="history-protocol-segments" class="metric-grid metric-grid-compact"></div>
+        </section>
+        <section class="surface timeline-surface" aria-labelledby="timeline-heading">
+          <div class="surface-heading">
+            <div>
+              <p class="eyebrow">Monotonic order</p>
+              <h2 id="timeline-heading">Event timeline</h2>
+            </div>
+            <p id="history-count" class="surface-note"></p>
+          </div>
+          <ol id="history-events" class="timeline"></ol>
+        </section>
+      </section>
+
+      <section id="view-system" class="view-panel" role="tabpanel" aria-labelledby="tab-system" hidden>
+        <div class="view-heading">
+          <div>
+            <p class="eyebrow">Operational diagnostics</p>
+            <h1>System health</h1>
+            <p class="view-subtitle">Market feed, policy identity, fitting, local persistence, notifications, backups, and service state.</p>
+          </div>
+        </div>
+        <div id="system-sections" class="system-grid"></div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>Paper-only development evidence. No exchange credentials, real orders, manual trades, or claim of proven profitability.</p>
+      <p id="last-refresh">Not yet refreshed</p>
+    </footer>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+    <dialog id="event-dialog" class="modal event-modal" aria-labelledby="event-dialog-title">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">Durable account event</p>
+          <h2 id="event-dialog-title">Event detail</h2>
+        </div>
+        <button class="icon-button" type="button" data-close-event aria-label="Close event detail">×</button>
+      </div>
+      <div id="event-detail" class="event-detail"></div>
+    </dialog>
+
+    <dialog id="control-dialog" class="modal control-modal" aria-labelledby="control-dialog-title">
+      <form method="dialog">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Operator intervention</p>
+            <h2 id="control-dialog-title">Confirm control</h2>
+          </div>
+          <button class="icon-button" type="submit" value="cancel" aria-label="Cancel control">×</button>
+        </div>
+        <div id="control-confirmation" class="control-confirmation"></div>
+        <div class="modal-actions">
+          <button class="button button-secondary" type="submit" value="cancel">Cancel</button>
+          <button id="confirm-control" class="button button-warning" type="button">Confirm</button>
+        </div>
+      </form>
+    </dialog>
+
+    <noscript>This build-free dashboard requires JavaScript to read the local account API.</noscript>
+  </body>
+</html>

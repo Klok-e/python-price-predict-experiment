@@ -4,9 +4,10 @@
 
 - Primary objective: maximize Compounded Net Return after all-in turnover cost and actual funding.
 - Hard risk constraint: every evidence run must remain within the 20% Drawdown Limit.
-- Final proof: at least 60 days and 100 Qualifying Portfolio Changes of fresh Forward Paper Proof,
-  with positive net return and no Risk Stop.
-- Statistical prediction quality and buy-and-hold outperformance are diagnostics, not proof gates.
+- Historical and Paper Account results are Development Evidence, not proof of real-world
+  profitability.
+- Statistical prediction quality, arbitrary per-fill win rate, and benchmark outperformance are not
+  acceptance gates.
 
 ## Rejected approaches
 
@@ -16,7 +17,7 @@
 | Long-only threshold execution | Proxy predictions and forced directional exposure did not optimize the portfolio objective and could not express short or cash conviction. | Rejected |
 | Rank and regime selection | Some isolated holdouts looked strong, but results were not stable across chronological regimes and did not establish fresh paper profitability. | Rejected |
 | Buy-and-hold excess gates | Beating a benchmark is not the capital objective; a losing strategy can still beat a worse benchmark. | Rejected |
-| Stored ledgers and HTML timelines | High-volume artifacts obscured the reproducible evidence contract and consumed unnecessary storage. | Rejected |
+| Proof-only CSV ledgers and generated HTML timelines | They could not provide atomic account recovery, exact Decision Records, or an operational control surface. | Rejected |
 
 ## New experiment entry format
 
@@ -31,7 +32,7 @@ Append each actual model experiment below. Infrastructure tests are not experime
 - Walk-Forward Compounded Net Return:
 - Maximum Drawdown by fold:
 - Turnover / costs / funding:
-- Historical Holdout or Forward Paper Proof state:
+- Historical Holdout or Paper Account state:
 - Verdict:
 - Notes:
 
@@ -147,3 +148,47 @@ Append each actual model experiment below. Infrastructure tests are not experime
   immediate irreconstructible-gap recovery. Historical policy metrics remain bit-identical. The
   enabled user service runs under lingering and persisted consecutive Flat Start observations from
   one PID; the 60-day / 100-change / positive-return / no-breach gate remains open.
+
+### 2026-08-23 - Persistent Paper Account hard cutover
+
+- Configuration hash: Policy Protocol
+  `b088750a01e5e323cf5c0736cf7b26640adb3534edd12f2ff27f15418a89e364`
+- Code hash: policy-runtime hash
+  `7748f966de4bac778f0178e2729798326fbb71f6a484a8ec45e7245026bbd83b`
+- Data hash: live Decision Record Market State identity
+  `3a8fe7bad3fa072a7939af10112a507141d5ced64c1fe32d29cbcaf682f6e286`;
+  attribution tensor input hash
+  `b37883891b014459adbc679d70016d509d5b99efa21e8ca1793829319f683afb`
+- Model hash: weekly ROCm Fitted Policy
+  `dc34eb25577415d9e8f6eac337a79c7bc3e0838451e03e2d9dc89c97b30bb09e`,
+  handed off from bootstrap model
+  `599fd50d2713a1a00f722d5c32024036d98831f88d11c435d7c5c2e14c75fc4a`
+  at `2026-08-23T19:07:03.109756+00:00`
+- Walk-Forward Compounded Net Return: not rerun for this operational cutover; prior historical
+  Development Evidence remains unchanged and is not a production-profitability claim
+- Maximum Drawdown by fold: not rerun; live Paper Account Maximum Drawdown was 0.00% at acceptance
+- Turnover / costs / funding: live account turnover, Transaction Cost, and funding were all $0.00;
+  the `2026-08-23T19:15:00+00:00` Decision Record projected 19.679571% turnover but its expired
+  first-start execution was recorded once as a linked Missed Execution with no fill or account
+  mutation
+- Historical Holdout or Paper Account state: legacy protocol
+  `39a5a83c6bbfae7a338b7f22f30cc88641a61b0a938d2a31956671caeec99e04`
+  was stopped at `2026-08-23T18:07:59Z` and preserved under
+  `computed-data/evidence/legacy/paper-proof-cutover-20260823T180759Z/`; import was rejected because
+  its artifacts lacked exact Decision Records, fill links, canonical per-decision inputs, explicit
+  cash/currency, and average-cost history. Paper Account
+  `11024fa6-7ead-468e-b603-27ce0e04a7ab` Flat-Started with $10,000 at
+  `2026-08-23T19:01:31.459961+00:00`
+- Verdict: persistent Paper Account cutover accepted as Development Evidence; no evidence here
+  establishes real-world profitability
+- Notes: the legacy archive passed `sha256sum -c SHA256SUMS`; the obsolete unit is `not-found` and
+  inactive. The lingering replacement `netgrowth-paper-dashboard.service` is enabled and active on
+  `127.0.0.1:8765`. `uv lock --check`, Ruff format/check, strict mypy, and the complete deterministic
+  suite passed (`93 passed, 1 skipped, 14 warnings`); the built wheel contains all local dashboard
+  assets. Agent-browser verified Live, History, System, Policy Protocol segments, and exact event
+  detail without JavaScript errors. RX 7800 XT ROCm fitting and inference were observed through
+  `/dev/kfd`, `renderD128`, loaded HIP/rocBLAS/MIOpen libraries, VRAM counters, the immutable weekly
+  checkpoint, and Policy Handoff. Live Decision `6e2b44e13adf2711522475c29152c3d3` and attribution
+  event `60b0388e-ac12-46e4-9d8a-3c0b6a99b086` remained complete after a service restart with the
+  same account, lifecycle, model identity, equity, metrics, and history. Background policy prewarming
+  now moves one-time canonical-data and GPU-kernel preparation ahead of future Decision Bars.

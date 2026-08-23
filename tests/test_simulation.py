@@ -41,7 +41,7 @@ def test_historical_fill_waits_sixty_seconds_and_charges_adverse_cost_once() -> 
     post_cost_equity = 10_000.0 / 1.0007
     assert result.transaction_cost == pytest.approx(10_000.0 - post_cost_equity)
     assert result.final_equity == pytest.approx(post_cost_equity)
-    assert result.qualifying_portfolio_changes == 1
+    assert result.executable_portfolio_changes == 1
     assert result.max_gross_exposure == pytest.approx(1.0)
     assert result.max_instrument_exposure == pytest.approx(
         {"BTCUSDT": 0.5, "ETHUSDT": 0.5, "BNBUSDT": 0.0, "SOLUSDT": 0.0}
@@ -86,7 +86,7 @@ def test_sub_one_percent_changes_accumulate_until_the_full_change_executes() -> 
 
     assert len(result.trades) == 1
     assert result.trades[0].target_weight == pytest.approx(0.011)
-    assert result.qualifying_portfolio_changes == 1
+    assert result.executable_portfolio_changes == 1
 
 
 def test_funding_is_applied_to_the_signed_position_at_its_event_time() -> None:
@@ -298,4 +298,4 @@ def test_incremental_paper_session_preserves_portfolio_and_pending_fill() -> Non
     quantity = 0.5 * post_cost_equity / 100.0
     assert state.quantities["BTCUSDT"] == pytest.approx(quantity)
     assert second.final_equity == pytest.approx(post_cost_equity + quantity)
-    assert second.qualifying_portfolio_changes == 1
+    assert second.executable_portfolio_changes == 1

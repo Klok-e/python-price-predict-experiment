@@ -240,7 +240,7 @@ def test_historical_signal_minute_uses_only_the_just_closed_candle() -> None:
     ]
 
 
-def test_paper_backend_fits_selected_architecture_and_emits_current_portfolio_target(tmp_path) -> None:
+def test_paper_backend_fits_selected_architecture_and_emits_current_portfolio_target(tmp_path, monkeypatch) -> None:
     from tests.test_market_data import dataset
 
     backend = TorchEvaluationBackend(tmp_path)
@@ -265,3 +265,25 @@ def test_paper_backend_fits_selected_architecture_and_emits_current_portfolio_ta
     assert all(abs(weight) <= 0.5 for weight in decision.target_weights.values())
     assert decision.refitted is True
     assert decision.model_bytes
+
+    requested_devices: list[str] = []
+    original_to = torch.nn.Module.to
+
+    def track_to(module, *args, **kwargs):
+        if args:
+            requested_devices.append(str(args[0]))
+        return original_to(module, *args, **kwargs)
+
+    monkeypatch.setattr(torch.nn.Module, "to", track_to)
+    restored = backend.paper(
+        canonical,
+        config,
+        "cpu",
+        validated_model=buffer.getvalue(),
+        fitted_model=decision.model_bytes,
+        observed_at=observed_at,
+        current_weights=dict.fromkeys(config.tickers, 0.0),
+    )
+
+    assert "cpu" in requested_devices
+    assert restored.refitted is False

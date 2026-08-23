@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-
 import pytest
 
 from netgrowth.evidence import (
@@ -63,73 +61,3 @@ def test_holdout_is_single_use_and_failed_result_is_consumed() -> None:
     assert first is repeated
     assert repeated.status == "consumed"
     assert repeated.net_return == -0.01
-
-
-def test_fitted_policy_handoff_preserves_proof_but_revision_resets_it() -> None:
-    state = EvidenceState()
-    start = datetime(2026, 8, 1, tzinfo=UTC)
-    state.start_paper("protocol-1", start)
-    state.record_paper_progress(
-        "protocol-1",
-        start + timedelta(days=61),
-        changes=101,
-        net_return=0.02,
-        max_drawdown=0.10,
-    )
-
-    state.record_fitted_policy_handoff("protocol-1", fitted_policy_hash="fit-2")
-    assert state.paper is not None and state.paper.started_at == start
-    assert state.paper.passed is True
-
-    state.start_paper("protocol-2", start + timedelta(days=62))
-    assert state.paper is not None and state.paper.started_at == start + timedelta(days=62)
-    assert state.paper.changes == 0
-
-
-def test_operational_gap_restarts_same_protocol_proof_clock() -> None:
-    state = EvidenceState()
-    start = datetime(2026, 8, 1, tzinfo=UTC)
-    state.start_paper("protocol", start)
-    state.record_paper_progress(
-        "protocol",
-        start + timedelta(days=2),
-        changes=4,
-        net_return=0.01,
-        max_drawdown=0.02,
-    )
-
-    restarted = state.restart_paper("protocol", start + timedelta(days=3))
-
-    assert restarted.started_at == start + timedelta(days=3)
-    assert restarted.observed_at == restarted.started_at
-    assert restarted.changes == 0
-    assert restarted.net_return == 0.0
-    assert restarted.max_drawdown == 0.0
-
-
-def test_paper_completion_requires_time_activity_profit_and_drawdown() -> None:
-    start = datetime(2026, 8, 1, tzinfo=UTC)
-    state = EvidenceState()
-    state.start_paper("protocol", start)
-
-    too_short = state.record_paper_progress(
-        "protocol", start + timedelta(days=59), changes=101, net_return=0.02, max_drawdown=0.10
-    )
-    assert too_short.passed is False and too_short.failed is False
-
-    too_quiet = state.record_paper_progress(
-        "protocol", start + timedelta(days=61), changes=99, net_return=0.02, max_drawdown=0.10
-    )
-    assert too_quiet.passed is False and too_quiet.failed is False
-
-    passed = state.record_paper_progress(
-        "protocol", start + timedelta(days=61), changes=101, net_return=0.02, max_drawdown=0.10
-    )
-    assert passed.passed is True and passed.failed is False
-
-    breached = EvidenceState()
-    breached.start_paper("breached", start)
-    failed = breached.record_paper_progress(
-        "breached", start + timedelta(minutes=1), changes=0, net_return=-0.21, max_drawdown=0.21
-    )
-    assert failed.failed is True and failed.passed is False

@@ -392,13 +392,19 @@ def _ensemble_target(
     """Average member outputs produced from one shared, actually marked portfolio."""
     if len(models) != len(encoded_members) or not models:
         raise ValueError("ensemble models and encodings must have the same non-zero size")
-    current = torch.tensor([[current_weights[ticker] for ticker in tickers]], dtype=torch.float32)
+    first_parameter = next(models[0].parameters(), None)
+    model_device = first_parameter.device if first_parameter is not None else encoded_members[0].device
+    current = torch.tensor(
+        [[current_weights[ticker] for ticker in tickers]],
+        dtype=torch.float32,
+        device=model_device,
+    )
     with torch.no_grad():
         outputs = [
-            cast(Any, model).target_from_encoded(encoded.unsqueeze(0), current).squeeze(0)
+            cast(Any, model).target_from_encoded(encoded.to(model_device).unsqueeze(0), current).squeeze(0)
             for model, encoded in zip(models, encoded_members, strict=True)
         ]
-    averaged = torch.stack(outputs).mean(dim=0)
+    averaged = torch.stack(outputs).mean(dim=0).cpu()
     return dict(zip(tickers, averaged.tolist(), strict=True))
 
 
@@ -473,7 +479,7 @@ class _ReplayTrack:
             turnover_notional=self.state.turnover_notional,
             transaction_cost=self.state.transaction_cost,
             funding_cashflow=self.state.funding_cashflow,
-            qualifying_portfolio_changes=self.state.qualifying_portfolio_changes,
+            executable_portfolio_changes=self.state.executable_portfolio_changes,
             risk_stop_triggered=self.state.risk_stop_time is not None,
             risk_stop_time=self.state.risk_stop_time,
             trades=tuple(self.trades),
@@ -492,7 +498,7 @@ def _outcome(replay: ReplayResult, model_bytes: bytes) -> EvaluationOutcome:
     return EvaluationOutcome(
         net_return=replay.compounded_net_return,
         max_drawdown=replay.max_drawdown,
-        qualifying_changes=replay.qualifying_portfolio_changes,
+        executable_changes=replay.executable_portfolio_changes,
         model_bytes=model_bytes,
         equity_rows=tuple(
             {
@@ -767,7 +773,7 @@ class TorchEvaluationBackend:
                 "validation_end": fold.validation_end.isoformat(),
                 "compounded_net_return": float(replay.compounded_net_return),
                 "maximum_drawdown": float(replay.max_drawdown),
-                "qualifying_portfolio_changes": replay.qualifying_portfolio_changes,
+                "executable_portfolio_changes": replay.executable_portfolio_changes,
                 "turnover_notional": float(replay.turnover_notional),
                 "transaction_cost": float(replay.transaction_cost),
                 "funding_cashflow": float(replay.funding_cashflow),
@@ -780,7 +786,7 @@ class TorchEvaluationBackend:
         return EvaluationOutcome(
             aggregate_return,
             max_drawdown,
-            sum(replay.qualifying_portfolio_changes for replay in chosen_replays),
+            sum(replay.executable_portfolio_changes for replay in chosen_replays),
             model_bytes,
             equity_rows,
             trade_rows,
@@ -896,10 +902,12 @@ class TorchEvaluationBackend:
             model_bytes = fitted_model
             refitted = False
 
+        models = tuple(model.to(device) for model in models)
+
         context = prepared.state.loc[prepared.state.index <= signal_time].tail(contract.receptive_bars)
         if len(context) < contract.receptive_bars:
             raise ValueError("insufficient revealed Market State for paper decision")
-        values = torch.tensor(context.to_numpy(dtype=np.float32)).unsqueeze(0)
+        values = torch.tensor(context.to_numpy(dtype=np.float32), device=device).unsqueeze(0)
         with torch.no_grad():
             encodings = tuple(cast(Any, model).encode_trajectory(values)[-1] for model in models)
         target = _ensemble_target(models, encodings, current_weights, config.tickers)

@@ -1,5 +1,5 @@
 [Unit]
-Description=Net-Growth Forward Paper Proof
+Description=Net-Growth Persistent Paper Account Dashboard
 Wants=network-online.target
 After=network-online.target
 StartLimitIntervalSec=10min
@@ -8,7 +8,7 @@ StartLimitBurst=3
 [Service]
 Type=simple
 WorkingDirectory=%h/Desktop/python-price-predict-experiment
-ExecStart=%h/Desktop/python-price-predict-experiment/.venv/bin/netgrowth paper --device cuda
+ExecStart=%h/Desktop/python-price-predict-experiment/.venv/bin/netgrowth serve --device cuda --host 127.0.0.1 --port 8765
 Restart=on-failure
 RestartSec=15s
 Environment=MIOPEN_LOG_LEVEL=0
