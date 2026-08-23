@@ -351,34 +351,6 @@ class SQLitePaperStore(AbstractContextManager["SQLitePaperStore"]):
     def accounts(self) -> list[dict[str, Any]]:
         return [dict(row) for row in self._connection.execute("SELECT * FROM accounts ORDER BY created_at")]
 
-    def start_operating_window(self, account_id: str, now: datetime) -> str:
-        previous = self._connection.execute("SELECT window_id FROM operating_windows WHERE ended_at IS NULL").fetchone()
-        self._connection.execute("BEGIN IMMEDIATE")
-        try:
-            if previous is not None:
-                self._connection.execute(
-                    """UPDATE operating_windows SET ended_at = ?, close_reason = 'detected-restart'
-                       WHERE window_id = ?""",
-                    (_timestamp(now), str(previous["window_id"])),
-                )
-            window_id = str(uuid4())
-            self._connection.execute(
-                "INSERT INTO operating_windows VALUES (?, ?, ?, NULL, NULL)",
-                (window_id, account_id, _timestamp(now)),
-            )
-            self._connection.execute("COMMIT")
-        except BaseException:
-            self._connection.execute("ROLLBACK")
-            raise
-        return window_id
-
-    def close_operating_window(self, window_id: str, now: datetime, *, reason: str = "graceful") -> None:
-        self._connection.execute(
-            """UPDATE operating_windows SET ended_at = ?, close_reason = ?
-               WHERE window_id = ? AND ended_at IS NULL""",
-            (_timestamp(now), reason, window_id),
-        )
-
     def operating_windows(self, account_id: str) -> list[dict[str, Any]]:
         return [
             dict(row)

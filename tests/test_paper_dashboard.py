@@ -603,6 +603,25 @@ def test_operator_checks_daily_backup_and_surfaces_a_later_failed_attempt(tmp_pa
     paper.close()
 
 
+def test_system_snapshot_exposes_backup_age(tmp_path) -> None:
+    clock = FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC))
+    app = create_application(
+        database_path=tmp_path / "paper.sqlite3",
+        backup_directory=tmp_path / "backups",
+        tickers=TICKERS,
+        clock=clock,
+        market_feed=FakeFeed([]),
+        policy_backend=FakePolicy([]),
+        notifications=NotificationRecorder(),
+    )
+    paper = app.state.paper_dashboard
+
+    clock.current += timedelta(hours=6)
+
+    assert paper.system_snapshot()["backup"]["age_seconds"] == pytest.approx(6 * 60 * 60)
+    paper.close()
+
+
 def test_live_snapshot_documents_the_marked_equity_reconciliation(tmp_path) -> None:
     app = make_app(
         tmp_path / "paper.sqlite3",

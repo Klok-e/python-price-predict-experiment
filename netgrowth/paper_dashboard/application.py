@@ -1239,7 +1239,15 @@ class PaperDashboardApplication:
 
     def _system_snapshot(self) -> dict[str, Any]:
         state = self.state
+        now = self._now()
         latest_backup = self.store.latest_backup()
+        backup = latest_backup or {"backup_name": None, "created_at": None, "error": state.backup_error}
+        created_at = backup["created_at"]
+        backup["age_seconds"] = (
+            max(0.0, (now - datetime.fromisoformat(str(created_at))).total_seconds())
+            if created_at is not None
+            else None
+        )
         notification_health = self.store.notification_health()
         diagnostics = getattr(self.policy_backend, "diagnostics", None)
         try:
@@ -1247,7 +1255,7 @@ class PaperDashboardApplication:
         except Exception as error:
             compute = {"backend": "unavailable", "error": str(error)}
         return {
-            "as_of": self._now().isoformat(),
+            "as_of": now.isoformat(),
             "market_feed": {
                 "status": state.data_status.value,
                 "observed_at": state.last_observation_at.isoformat() if state.last_observation_at else None,
@@ -1268,7 +1276,7 @@ class PaperDashboardApplication:
                 "journal_mode": self.store.journal_mode,
                 "state_version": state.state_version,
             },
-            "backup": latest_backup or {"backup_name": None, "created_at": None, "error": state.backup_error},
+            "backup": backup,
             "service": {
                 "owner": "single-process",
                 "status": "running" if not self._closed else "stopped",

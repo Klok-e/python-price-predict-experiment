@@ -73,6 +73,29 @@ def test_account_metrics_reconcile_gross_pnl_cost_and_funding_to_marked_equity()
     assert snapshot.account.compounded_net_return == pytest.approx(0.009)
 
 
+def test_operator_forced_close_realizes_average_cost_and_charges_transaction_cost() -> None:
+    account = AccountAccounting.flat_start(("BTCUSDT",), starting_equity=10_000.0)
+    account.apply_fill("BTCUSDT", quantity_delta=10.0, reference_price=100.0, transaction_cost=0.70)
+    account.apply_fill("BTCUSDT", quantity_delta=5.0, reference_price=110.0, transaction_cost=0.385)
+
+    assert account.positions["BTCUSDT"].average_entry == pytest.approx(103.33333333333333)
+
+    operator_close = account.apply_fill(
+        "BTCUSDT",
+        quantity_delta=-15.0,
+        reference_price=120.0,
+        transaction_cost=1.26,
+    )
+    snapshot = account.mark({"BTCUSDT": 120.0})
+
+    assert operator_close.realized_pnl == pytest.approx(250.0)
+    assert snapshot.positions["BTCUSDT"].quantity == pytest.approx(0.0)
+    assert snapshot.positions["BTCUSDT"].average_entry == pytest.approx(0.0)
+    assert snapshot.account.gross_trading_pnl == pytest.approx(250.0)
+    assert snapshot.account.transaction_cost == pytest.approx(2.345)
+    assert snapshot.account.current_equity == pytest.approx(10_247.655)
+
+
 def test_risk_metrics_follow_authoritative_minute_marks() -> None:
     account = AccountAccounting.flat_start(("BTCUSDT",), starting_equity=1_000.0)
     account.apply_fill("BTCUSDT", quantity_delta=10.0, reference_price=100.0, transaction_cost=0.0)
