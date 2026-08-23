@@ -50,9 +50,12 @@ systemctl --user enable --now netgrowth-paper-proof.service
 loginctl enable-linger "$USER"
 ```
 
-The service executes the already synchronized locked environment directly, restarts transient
-failures after 15 seconds, and stops after three failures in ten minutes rather than entering an
-unbounded loop on a persistent defect.
+The service executes the already synchronized locked environment directly. Paper operation retries
+public-data availability failures in-process for up to 30 attempts at two-second intervals so a
+brief outage does not pay model startup latency. The workflow archives an irreconstructible gap and
+restarts flat when a fresh observation is available; a gap it cannot recover exits immediately.
+Persistent failures return to systemd, which restarts after 15 seconds and stops after three failures
+in ten minutes rather than entering an unbounded loop.
 
 Independent evidence runs start flat with $10,000. Gross Exposure is capped at 100%, absolute
 exposure to one ticker at 50%, and a 20% Drawdown Limit triggers a delayed flattening Risk Stop.

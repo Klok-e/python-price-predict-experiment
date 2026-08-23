@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
+
+_PAPER_DATA_RETRY_ATTEMPTS = 30
+_PAPER_DATA_RETRY_DELAY_SECONDS = 2.0
 
 
 def _paths(parser: argparse.ArgumentParser, *, device: bool = True) -> None:
@@ -25,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    from .market_data import PaperObservationGap, PublicDataUnavailable
     from .workflow import NetGrowthWorkflow
 
     arguments = build_parser().parse_args(argv)
@@ -35,8 +40,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         device=getattr(arguments, "device", "cpu"),
     )
     if arguments.command == "paper":
+        consecutive_data_failures = 0
         while True:
-            result = workflow.paper()
+            try:
+                result = workflow.paper()
+            except PaperObservationGap:
+                raise
+            except PublicDataUnavailable as error:
+                consecutive_data_failures += 1
+                if consecutive_data_failures == 1:
+                    print(f"public paper data unavailable; retrying in-process: {error}", file=sys.stderr, flush=True)
+                if consecutive_data_failures >= _PAPER_DATA_RETRY_ATTEMPTS:
+                    print(
+                        f"public paper data unavailable after {_PAPER_DATA_RETRY_ATTEMPTS} attempts; "
+                        f"exiting for service recovery: {error}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    raise
+                time.sleep(_PAPER_DATA_RETRY_DELAY_SECONDS)
+                continue
+            consecutive_data_failures = 0
             print(result.summary, flush=True)
             if result.terminal:
                 break
