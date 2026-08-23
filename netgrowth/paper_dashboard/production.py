@@ -20,7 +20,7 @@ from torch import nn
 from netgrowth.attribution import feature_metadata_from_names, integrated_gradients
 from netgrowth.binance import PaperFeedObservation, PublicPaperAdapter
 from netgrowth.config import PolicyConfig, load_config
-from netgrowth.market_data import CanonicalDataset
+from netgrowth.market_data import CanonicalDataset, InstrumentData
 from netgrowth.simulation import simulation_config_for_policy
 from netgrowth.torch_backend import (
     TorchEvaluationBackend,
@@ -46,6 +46,25 @@ def _decision_input_id(
         + json.dumps(current_weights, sort_keys=True, separators=(",", ":"))
     )
     return sha256(payload.encode()).hexdigest()
+
+
+def _causal_policy_input(canonical: CanonicalDataset, signal_time: datetime) -> CanonicalDataset:
+    """Retain exactly the recent raw observations available at Signal Time."""
+    cutoff = pd.Timestamp(signal_time)
+    recent = _recent_paper_context(canonical, cutoff)
+    return CanonicalDataset(
+        instruments={
+            ticker: InstrumentData(
+                perpetual=data.perpetual.loc[:cutoff],
+                spot=data.spot.loc[:cutoff],
+                funding=data.funding.loc[:cutoff],
+                open_interest=data.open_interest.loc[:cutoff],
+                premium=data.premium.loc[:cutoff],
+            )
+            for ticker, data in recent.instruments.items()
+        },
+        tickers=recent.tickers,
+    )
 
 
 @dataclass
@@ -137,7 +156,7 @@ class ProductionPolicyBackend:
 
     def decide(self, observation: MarketObservation, current_weights: dict[str, float]) -> PolicyDecision:
         with self._inference_lock:
-            canonical = self.adapter.load()
+            canonical = _causal_policy_input(self.adapter.load(), observation.timestamp)
             input_id = _decision_input_id(canonical.identity_hash, observation.timestamp, current_weights)
             result = self.backend.paper(
                 canonical,
@@ -319,7 +338,7 @@ class ProductionPolicyBackend:
         input_id = decision.get("input_id")
         if not isinstance(input_id, str):
             raise ValueError("durable Decision Record lacks canonical Market State identity")
-        canonical = self.attribution_adapter.load()
+        canonical = _causal_policy_input(self.attribution_adapter.load(), observed_at)
         current_weights = {ticker: float(current[ticker]) for ticker in self.config.tickers}
         if _decision_input_id(canonical.identity_hash, observed_at, current_weights) != input_id:
             raise RuntimeError("canonical Market State identity differs from the durable Decision Record")

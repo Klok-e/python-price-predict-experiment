@@ -13,10 +13,12 @@ from types import SimpleNamespace
 from typing import Any
 
 import httpx
+import pandas as pd
 import pytest
 import torch
 
 from netgrowth.config import load_config
+from netgrowth.market_data import CanonicalDataset, InstrumentData
 from netgrowth.paper_dashboard.application import (
     FittedPolicyCandidate,
     _operator_loop,
@@ -148,6 +150,35 @@ def observation(offset: int, *, decision: bool = False) -> MarketObservation:
         input_id=f"input-{offset}",
         decision_bar_closed=decision,
     )
+
+
+def canonical_policy_input(*, periods: int, corrected: bool = False) -> CanonicalDataset:
+    index = pd.date_range("2026-08-23T17:57:00Z", periods=periods, freq="min")
+    instruments: dict[str, InstrumentData] = {}
+    for offset, ticker in enumerate(TICKERS):
+        close = pd.Series([100.0 + offset + step / 10 for step in range(periods)], index=index)
+        bars = pd.DataFrame(
+            {
+                "open": close,
+                "high": close + 0.2,
+                "low": close - 0.2,
+                "close": close,
+                "volume": 10.0,
+                "taker_buy_volume": 6.0,
+                "trades": 20,
+            },
+            index=index,
+        )
+        if corrected:
+            bars.loc[index[1], "close"] += 1.0
+        instruments[ticker] = InstrumentData(
+            perpetual=bars,
+            spot=bars.copy(),
+            funding=pd.Series([0.0], index=index[:1], name="funding_rate"),
+            open_interest=pd.Series([1_000.0], index=index[:1], name="open_interest"),
+            premium=pd.Series([0.001], index=index[:1], name="premium"),
+        )
+    return CanonicalDataset(instruments=instruments, tickers=TICKERS)
 
 
 def make_app(database: Path, clock: FakeClock, feed: FakeFeed, policy: FakePolicy):
@@ -1174,7 +1205,7 @@ def test_production_policy_preparation_warms_data_and_gpu_inference_without_a_de
 
 
 def test_production_decision_identity_hashes_exact_market_state_and_current_portfolio(tmp_path) -> None:
-    canonical = SimpleNamespace(identity_hash="canonical-market-state-1")
+    canonical = canonical_policy_input(periods=4)
 
     class Adapter:
         def load(self) -> SimpleNamespace:
@@ -1221,43 +1252,119 @@ def test_production_decision_identity_hashes_exact_market_state_and_current_port
 
 def test_restarted_attribution_rejects_changed_canonical_market_state(tmp_path) -> None:
     class Adapter:
-        def load(self) -> SimpleNamespace:
-            return SimpleNamespace(identity_hash="corrected-market-state")
+        def __init__(self, canonical: CanonicalDataset) -> None:
+            self.canonical = canonical
 
+        def load(self) -> CanonicalDataset:
+            return self.canonical
+
+    class Backend:
+        def paper(self, *args: Any, **kwargs: Any) -> SimpleNamespace:
+            del args, kwargs
+            return SimpleNamespace(
+                refitted=False,
+                model_bytes=b"selected-policy",
+                target_weights=dict.fromkeys(TICKERS, 0.0),
+            )
+
+    original = canonical_policy_input(periods=4)
+    corrected = canonical_policy_input(periods=6, corrected=True)
     selected = b"selected-policy"
     config = load_config("policy.toml")
-    backend = ProductionPolicyBackend(
-        adapter=Adapter(),
-        backend=SimpleNamespace(),
-        fitting_adapter=Adapter(),
-        attribution_adapter=Adapter(),
-        fitting_backend=SimpleNamespace(),
+    current = dict.fromkeys(TICKERS, 0.0)
+    decision_backend = ProductionPolicyBackend(
+        adapter=Adapter(original),
+        backend=Backend(),
+        fitting_adapter=Adapter(original),
+        attribution_adapter=Adapter(original),
+        fitting_backend=Backend(),
         checkpoint_directory=tmp_path,
         config=config,
         device="cpu",
         fitted_model=selected,
     )
-    current = dict.fromkeys(TICKERS, 0.0)
-    signal_time = observation(0).timestamp
-    durable_input_id = hashlib.sha256(
-        (
-            "original-market-state"
-            + ":"
-            + signal_time.isoformat()
-            + ":"
-            + json.dumps(current, sort_keys=True, separators=(",", ":"))
-        ).encode()
-    ).hexdigest()
+    decision = decision_backend.decide(observation(0, decision=True), current)
+    resumed = ProductionPolicyBackend(
+        adapter=Adapter(corrected),
+        backend=Backend(),
+        fitting_adapter=Adapter(corrected),
+        attribution_adapter=Adapter(corrected),
+        fitting_backend=Backend(),
+        checkpoint_directory=tmp_path,
+        config=config,
+        device="cpu",
+        fitted_model=selected,
+    )
 
     with pytest.raises(RuntimeError, match="canonical Market State identity"):
-        backend._recover_attribution_input(
+        resumed._recover_attribution_input(
             {
-                "signal_time": signal_time.isoformat(),
+                "signal_time": observation(0).timestamp.isoformat(),
                 "current_portfolio": current,
-                "model_id": hashlib.sha256(selected).hexdigest(),
-                "input_id": durable_input_id,
+                "model_id": decision.model_id,
+                "input_id": decision.input_id,
             }
         )
+
+
+def test_restarted_attribution_accepts_new_rows_after_the_signal_time(tmp_path) -> None:
+    class Adapter:
+        def __init__(self, canonical: CanonicalDataset) -> None:
+            self.canonical = canonical
+
+        def load(self) -> CanonicalDataset:
+            return self.canonical
+
+    class Backend:
+        def paper(self, *args: Any, **kwargs: Any) -> SimpleNamespace:
+            del args, kwargs
+            return SimpleNamespace(
+                refitted=False,
+                model_bytes=b"selected-policy",
+                target_weights=dict.fromkeys(TICKERS, 0.0),
+            )
+
+    original = canonical_policy_input(periods=4)
+    appended = canonical_policy_input(periods=6)
+    selected = b"selected-policy"
+    config = load_config("policy.toml")
+    current = dict.fromkeys(TICKERS, 0.0)
+    decision_backend = ProductionPolicyBackend(
+        adapter=Adapter(original),
+        backend=Backend(),
+        fitting_adapter=Adapter(original),
+        attribution_adapter=Adapter(original),
+        checkpoint_directory=tmp_path,
+        config=config,
+        device="cpu",
+        fitted_model=selected,
+        fitting_backend=Backend(),
+    )
+    decision = decision_backend.decide(observation(0, decision=True), current)
+    resumed = ProductionPolicyBackend(
+        adapter=Adapter(appended),
+        backend=Backend(),
+        fitting_adapter=Adapter(appended),
+        attribution_adapter=Adapter(appended),
+        fitting_backend=Backend(),
+        checkpoint_directory=tmp_path,
+        config=config,
+        device="cpu",
+        fitted_model=selected,
+    )
+
+    canonical, _, _, _ = resumed._recover_attribution_input(
+        {
+            "signal_time": observation(0).timestamp.isoformat(),
+            "current_portfolio": current,
+            "model_id": decision.model_id,
+            "input_id": decision.input_id,
+        }
+    )
+
+    assert max(data.perpetual.index.max() for data in canonical.instruments.values()) <= pd.Timestamp(
+        observation(0).timestamp
+    )
 
 
 def test_production_diagnostics_report_the_rocm_runtime(tmp_path, monkeypatch) -> None:
