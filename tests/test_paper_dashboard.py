@@ -1205,7 +1205,7 @@ def test_production_policy_preparation_warms_data_and_gpu_inference_without_a_de
 
 
 def test_production_decision_identity_hashes_exact_market_state_and_current_portfolio(tmp_path) -> None:
-    canonical = canonical_policy_input(periods=4)
+    canonical = canonical_policy_input(periods=3)
 
     class Adapter:
         def load(self) -> SimpleNamespace:
@@ -1267,7 +1267,7 @@ def test_restarted_attribution_rejects_changed_canonical_market_state(tmp_path) 
                 target_weights=dict.fromkeys(TICKERS, 0.0),
             )
 
-    original = canonical_policy_input(periods=4)
+    original = canonical_policy_input(periods=3)
     corrected = canonical_policy_input(periods=6, corrected=True)
     selected = b"selected-policy"
     config = load_config("policy.toml")
@@ -1324,7 +1324,7 @@ def test_restarted_attribution_accepts_new_rows_after_the_signal_time(tmp_path) 
                 target_weights=dict.fromkeys(TICKERS, 0.0),
             )
 
-    original = canonical_policy_input(periods=4)
+    original = canonical_policy_input(periods=3)
     appended = canonical_policy_input(periods=6)
     selected = b"selected-policy"
     config = load_config("policy.toml")
@@ -1362,7 +1362,7 @@ def test_restarted_attribution_accepts_new_rows_after_the_signal_time(tmp_path) 
         }
     )
 
-    assert max(data.perpetual.index.max() for data in canonical.instruments.values()) <= pd.Timestamp(
+    assert max(data.perpetual.index.max() for data in canonical.instruments.values()) < pd.Timestamp(
         observation(0).timestamp
     )
 

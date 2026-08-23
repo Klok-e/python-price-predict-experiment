@@ -55,11 +55,11 @@ def _causal_policy_input(canonical: CanonicalDataset, signal_time: datetime) -> 
     return CanonicalDataset(
         instruments={
             ticker: InstrumentData(
-                perpetual=data.perpetual.loc[:cutoff],
-                spot=data.spot.loc[:cutoff],
+                perpetual=data.perpetual.loc[data.perpetual.index < cutoff],
+                spot=data.spot.loc[data.spot.index < cutoff],
                 funding=data.funding.loc[:cutoff],
                 open_interest=data.open_interest.loc[:cutoff],
-                premium=data.premium.loc[:cutoff],
+                premium=data.premium.loc[data.premium.index < cutoff],
             )
             for ticker, data in recent.instruments.items()
         },
