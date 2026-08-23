@@ -64,3 +64,9 @@ reused holdout evidence, or partial paper time for that outcome.
   under the enabled `netgrowth-paper-proof.service`, advanced through three consecutive minutes with
   zero restarts, and is reboot-persistent with user lingering enabled. The 60-day / 100-change /
   positive-return / no-breach gate remains open.
+- 2026-08-23: retry-resilient protocol `39a5a83c...` passed fresh ROCm validation in immutable
+  artifact `ca6207a2011194aa` at +29.026712% Compounded Net Return, 7.887010% Maximum Drawdown, and
+  300 Qualifying Portfolio Changes. Fresh Forward Paper Proof started flat at
+  `2026-08-23T17:12:00Z` under the enabled, lingering `netgrowth-paper-proof.service`, advanced
+  through consecutive `17:12` and `17:13` observations from PID `339493` with zero restarts, and
+  remains active. The 60-day / 100-change / positive-return / no-breach gate remains open.

@@ -122,3 +122,28 @@ Append each actual model experiment below. Infrastructure tests are not experime
   The code-only revision bounds contemporaneous mark latency, archives and resets interrupted proof
   attempts from a Flat Start, distinguishes transient publication lag from irreconstructible gaps,
   and runs through a reboot-persistent user service. Historical policy metrics remain bit-identical.
+
+### 2026-08-23 - Retry-resilient unattended paper protocol
+
+- Configuration hash: `03722c682b8d35618bc2c5a6ab9c656665a330d6acff2dad38a0c71142136536`
+- Code hash: `33f65632400a2bd5bfb6fee4b6237e53b12122973cd7034c15ef637fe974f121`
+- Data hash: `6557b79293d8498363d1146331e420dd159f912fd01359d5dac7d03ffb478f28`
+- Model hash: `599fd50d2713a1a00f722d5c32024036d98831f88d11c435d7c5c2e14c75fc4a`
+- Walk-Forward Compounded Net Return: +29.026712%; selected actual three-seed TCN ensemble,
+  width 64, seven-day receptive field; 300 Qualifying Portfolio Changes
+- Maximum Drawdown by fold: 1.819838%, 7.887010%, 4.268140%, 4.339552%, 2.133313%,
+  2.162004%, 1.463445%, 2.371882%, 7.676047%, 5.231659%, 4.796008%, and 3.680513%;
+  no Risk Stop triggered
+- Turnover / costs / funding: $60,987.06 turnover notional, $42.69 all-in transaction cost, and
+  -$221.76 funding cashflow
+- Historical Holdout or Forward Paper Proof state: the initial holdout remains permanently
+  consumed; fresh proof for protocol
+  `39a5a83c6bbfae7a338b7f22f30cc88641a61b0a938d2a31956671caeec99e04` started flat at
+  `2026-08-23T17:12:00+00:00` and advanced through `2026-08-23T17:13:00+00:00` with zero restarts
+- Verdict: Validated Policy Protocol; Forward Paper Proof is actively accumulating final evidence
+- Notes: immutable validation artifact `ca6207a2011194aa`, result hash
+  `4a78ca67b4eb60b20ddca90044fbad97bc2e674ef21941438a605de29ae0f721`.
+  The code-only revision retries transient public-data unavailability in-process while preserving
+  immediate irreconstructible-gap recovery. Historical policy metrics remain bit-identical. The
+  enabled user service runs under lingering and persisted consecutive Flat Start observations from
+  one PID; the 60-day / 100-change / positive-return / no-breach gate remains open.
