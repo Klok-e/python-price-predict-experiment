@@ -33,6 +33,21 @@ from .application import FittedPolicyCandidate, create_application
 from .domain import MarketObservation, PolicyDecision
 
 
+def _decision_input_id(
+    canonical_identity: str,
+    signal_time: datetime,
+    current_weights: Mapping[str, float],
+) -> str:
+    payload = (
+        canonical_identity
+        + ":"
+        + signal_time.isoformat()
+        + ":"
+        + json.dumps(current_weights, sort_keys=True, separators=(",", ":"))
+    )
+    return sha256(payload.encode()).hexdigest()
+
+
 @dataclass
 class ProductionMarketFeed:
     adapter: PublicPaperAdapter
@@ -123,15 +138,7 @@ class ProductionPolicyBackend:
     def decide(self, observation: MarketObservation, current_weights: dict[str, float]) -> PolicyDecision:
         with self._inference_lock:
             canonical = self.adapter.load()
-            input_id = sha256(
-                (
-                    canonical.identity_hash
-                    + ":"
-                    + observation.timestamp.isoformat()
-                    + ":"
-                    + json.dumps(current_weights, sort_keys=True, separators=(",", ":"))
-                ).encode()
-            ).hexdigest()
+            input_id = _decision_input_id(canonical.identity_hash, observation.timestamp, current_weights)
             result = self.backend.paper(
                 canonical,
                 self.config,
@@ -309,12 +316,41 @@ class ProductionPolicyBackend:
         model_id = decision.get("model_id")
         if not isinstance(model_id, str):
             raise ValueError("durable Decision Record lacks Fitted Policy identity")
+        input_id = decision.get("input_id")
+        if not isinstance(input_id, str):
+            raise ValueError("durable Decision Record lacks canonical Market State identity")
+        canonical = self.attribution_adapter.load()
+        current_weights = {ticker: float(current[ticker]) for ticker in self.config.tickers}
+        if _decision_input_id(canonical.identity_hash, observed_at, current_weights) != input_id:
+            raise RuntimeError("canonical Market State identity differs from the durable Decision Record")
         return (
-            self.attribution_adapter.load(),
-            {ticker: float(current[ticker]) for ticker in self.config.tickers},
+            canonical,
+            current_weights,
             self._model_bytes(model_id),
             observed_at,
         )
+
+    def diagnostics(self) -> dict[str, str]:
+        """Report the configured and available fitting/inference runtime."""
+        requested = str(torch.device(self.device))
+        device_type = torch.device(requested).type
+        rocm_version = torch.version.hip
+        available = device_type != "cuda" or torch.cuda.is_available()
+        backend = "ROCm" if device_type == "cuda" and rocm_version else "CUDA" if device_type == "cuda" else "CPU"
+        actual = requested if available else "unavailable"
+        device_name = "CPU"
+        if device_type == "cuda" and available:
+            device_name = torch.cuda.get_device_name(requested)
+        readiness = "ready" if available else "unavailable"
+        return {
+            "backend": backend,
+            "requested_device": requested,
+            "actual_device": actual,
+            "device_name": device_name,
+            "rocm_version": str(rocm_version) if rocm_version else "not-detected",
+            "inference": readiness,
+            "fitting": readiness,
+        }
 
     def _model_bytes(self, model_id: str) -> bytes:
         if sha256(self.fitted_model).hexdigest() == model_id:

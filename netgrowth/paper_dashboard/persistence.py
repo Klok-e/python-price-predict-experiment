@@ -471,6 +471,13 @@ class SQLitePaperStore(AbstractContextManager["SQLitePaperStore"]):
             return None
         return self._backup_file(prefix, now)
 
+    def record_backup_failure(self, now: datetime, error: str) -> None:
+        """Persist the latest failed daily attempt independently of prior successes."""
+        self._connection.execute(
+            "INSERT OR REPLACE INTO backup_status VALUES (?, ?, ?)",
+            (f"paper-{now.date().isoformat()}-failed", _timestamp(now), error),
+        )
+
     def _backup_file(self, label: str, now: datetime, *, record_status: bool = True) -> Path:
         self.backup_directory.mkdir(parents=True, exist_ok=True)
         destination = self.backup_directory / f"{label}-{now.strftime('%H%M%S')}.sqlite3"
@@ -490,7 +497,9 @@ class SQLitePaperStore(AbstractContextManager["SQLitePaperStore"]):
         return destination
 
     def latest_backup(self) -> dict[str, Any] | None:
-        row = self._connection.execute("SELECT * FROM backup_status ORDER BY created_at DESC LIMIT 1").fetchone()
+        row = self._connection.execute(
+            "SELECT * FROM backup_status ORDER BY created_at DESC, rowid DESC LIMIT 1"
+        ).fetchone()
         return dict(row) if row is not None else None
 
     def reset_and_replace(

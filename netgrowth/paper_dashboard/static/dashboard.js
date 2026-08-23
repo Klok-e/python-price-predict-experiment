@@ -337,6 +337,8 @@
       ["Transaction Cost", formatMoney(first(account.transaction_cost, account.transaction_costs, account.costs)), "All-in adverse execution cost", "negative"],
       ["Funding paid / received", formatMoney(first(account.funding, account.funding_pnl, account.funding_cashflow)), "Separate from Transaction Cost", sentiment(first(account.funding, account.funding_pnl, account.funding_cashflow))],
       ["Turnover", formatMoney(first(account.turnover, account.total_turnover)), "Executed Portfolio Changes"],
+      ["Composed equity", formatMoney(first(account.marked_equity_reconciliation?.composed_equity, account.composed_equity)), "Cash balance + unrealized P&L"],
+      ["Reconciliation difference", formatMoney(first(account.marked_equity_reconciliation?.difference, account.reconciliation_difference)), "Composed equity + difference = authoritative Marked Equity", sentiment(first(account.marked_equity_reconciliation?.difference, account.reconciliation_difference), true)],
     ];
     $("account-metrics").replaceChildren(...accountMetrics.map((metric) => metricCard(...metric)));
 
@@ -559,6 +561,7 @@
       ["Market feed", first(system.market_feed, system.freshness, system.data)],
       ["Policy and model", first(system.policy, system.model, system.policy_protocol)],
       ["Fitting", first(system.fitting, system.fit)],
+      ["Compute runtime", first(system.compute, system.runtime, system.accelerator)],
       ["Operating windows", first(system.operating_windows, system.windows)],
       ["Notifications", first(system.notifications, system.notification_health)],
       ["Database", first(system.database, system.persistence)],

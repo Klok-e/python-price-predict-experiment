@@ -9,7 +9,7 @@ import json
 import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from copy import deepcopy
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
@@ -166,11 +166,7 @@ class PaperDashboardApplication:
         )
         now = self._now()
         self.state = self.store.open_active_account(now, tickers, starting_equity=starting_equity)
-        try:
-            self.store.create_daily_backup(now)
-            self.state.backup_error = None
-        except Exception as error:
-            self.state.backup_error = str(error)
+        self._check_daily_backup()
         prior_windows = self.store.operating_windows(self.state.account_id)
         detected_open_window = next(
             (window for window in reversed(prior_windows) if window["ended_at"] is None),
@@ -247,6 +243,7 @@ class PaperDashboardApplication:
             self._closed = True
 
     async def advance_once(self, observation: MarketObservation | None = None) -> dict[str, Any]:
+        self._check_daily_backup()
         if observation is None:
             try:
                 supplied = self.market_feed.observe(self.state.last_observation_at)
@@ -260,6 +257,7 @@ class PaperDashboardApplication:
         return self._advance(observation)
 
     def advance_once_sync(self, observation: MarketObservation | None = None) -> dict[str, Any]:
+        self._check_daily_backup()
         if observation is None:
             try:
                 supplied = self.market_feed.observe(self.state.last_observation_at)
@@ -1094,6 +1092,15 @@ class PaperDashboardApplication:
             )
             account_metrics = account_snapshot.account if account_snapshot is not None else None
             risk_metrics = account_snapshot.risk if account_snapshot is not None else None
+            cash_balance = account_metrics.cash_balance if account_metrics else state.starting_equity
+            realized_pnl = account_metrics.realized_pnl if account_metrics else 0.0
+            unrealized_pnl = account_metrics.unrealized_pnl if account_metrics else 0.0
+            composed_equity = account_metrics.composed_equity if account_metrics else state.starting_equity
+            reconciliation_difference = (
+                account_metrics.reconciliation_difference
+                if account_metrics
+                else state.simulation.equity - composed_equity
+            )
             last_observation = state.last_observation_at
             freshness_age = max(0.0, (now - last_observation).total_seconds()) if last_observation else None
             current_window = self.store.operating_windows(state.account_id)[-1]
@@ -1111,13 +1118,25 @@ class PaperDashboardApplication:
                     "started_at": state.created_at.isoformat(),
                     "starting_equity": state.starting_equity,
                     "current_equity": state.simulation.equity,
-                    "cash": account_metrics.cash_balance if account_metrics else state.starting_equity,
+                    "cash": cash_balance,
                     "net_pnl": state.simulation.equity - state.starting_equity,
                     "compounded_net_return": state.simulation.equity / state.starting_equity - 1.0,
                     "gross_trading_pnl": account_metrics.gross_trading_pnl if account_metrics else 0.0,
+                    "realized_pnl": realized_pnl,
+                    "unrealized_pnl": unrealized_pnl,
                     "transaction_cost": state.simulation.transaction_cost,
                     "funding": state.simulation.funding_cashflow,
                     "turnover": state.simulation.turnover_notional,
+                    "composed_equity": composed_equity,
+                    "reconciliation_difference": reconciliation_difference,
+                    "marked_equity_reconciliation": {
+                        "formula": "cash_balance + unrealized_pnl + reconciliation_difference",
+                        "cash_balance": cash_balance,
+                        "unrealized_pnl": unrealized_pnl,
+                        "composed_equity": composed_equity,
+                        "difference": reconciliation_difference,
+                        "authoritative_marked_equity": state.simulation.equity,
+                    },
                 },
                 "risk": {
                     "current_drawdown": risk_metrics.current_drawdown if risk_metrics else 0.0,
@@ -1222,6 +1241,11 @@ class PaperDashboardApplication:
         state = self.state
         latest_backup = self.store.latest_backup()
         notification_health = self.store.notification_health()
+        diagnostics = getattr(self.policy_backend, "diagnostics", None)
+        try:
+            compute = diagnostics() if callable(diagnostics) else {"backend": "unreported"}
+        except Exception as error:
+            compute = {"backend": "unavailable", "error": str(error)}
         return {
             "as_of": self._now().isoformat(),
             "market_feed": {
@@ -1236,6 +1260,7 @@ class PaperDashboardApplication:
                 "compatibility": state.compatibility_manifest,
             },
             "fitting": state.fitting,
+            "compute": compute,
             "operating_windows": self.store.operating_windows(state.account_id),
             "notifications": notification_health,
             "database": {
@@ -1676,6 +1701,20 @@ class PaperDashboardApplication:
         if now.tzinfo is None or now.utcoffset() is None:
             raise ValueError("application clock must return timezone-aware UTC")
         return now.astimezone(UTC)
+
+    def _check_daily_backup(self) -> None:
+        """Attempt the active UTC day's online backup without stopping trading."""
+        with self._owner_lock:
+            now = self._now()
+            try:
+                self.store.create_daily_backup(now)
+                self.state.backup_error = None
+            except Exception as error:
+                message = str(error)
+                self.state.backup_error = message
+                # The in-memory overlay still makes a broken persistence path visible.
+                with suppress(Exception):
+                    self.store.record_backup_failure(now, message)
 
 
 def create_application(

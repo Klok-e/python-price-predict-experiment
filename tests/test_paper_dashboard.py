@@ -14,6 +14,7 @@ from typing import Any
 
 import httpx
 import pytest
+import torch
 
 from netgrowth.config import load_config
 from netgrowth.paper_dashboard.application import (
@@ -535,6 +536,86 @@ def test_data_stale_is_an_overlay_and_notifies_once_after_five_minutes(tmp_path)
     app.state.paper_dashboard.advance_once_sync()
     app.state.paper_dashboard.advance_once_sync()
     assert [kind for kind, _ in notifications.calls] == ["data_stale"]
+    app.state.paper_dashboard.close()
+
+
+def test_operator_checks_daily_backup_and_surfaces_a_later_failed_attempt(tmp_path, monkeypatch) -> None:
+    clock = FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC))
+    backup_directory = tmp_path / "backups"
+    app = create_application(
+        database_path=tmp_path / "paper.sqlite3",
+        backup_directory=backup_directory,
+        tickers=TICKERS,
+        clock=clock,
+        market_feed=FakeFeed([]),
+        policy_backend=FakePolicy([]),
+        notifications=NotificationRecorder(),
+    )
+    paper = app.state.paper_dashboard
+    assert len(list(backup_directory.glob("paper-*.sqlite3"))) == 1
+
+    clock.current += timedelta(days=1)
+    paper.advance_once_sync(observation(24 * 60))
+    assert len(list(backup_directory.glob("paper-*.sqlite3"))) == 2
+
+    def fail_backup(*args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+        raise OSError("backup disk is full")
+
+    monkeypatch.setattr(paper.store, "_backup_file", fail_backup)
+    clock.current += timedelta(days=1)
+    paper.advance_once_sync(observation(2 * 24 * 60))
+
+    backup = paper.system_snapshot()["backup"]
+    assert backup["error"] == "backup disk is full"
+    assert backup["created_at"] == clock.current.isoformat()
+    paper.close()
+
+
+def test_live_snapshot_documents_the_marked_equity_reconciliation(tmp_path) -> None:
+    app = make_app(
+        tmp_path / "paper.sqlite3",
+        FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC)),
+        FakeFeed([]),
+        FakePolicy([]),
+    )
+    paper = app.state.paper_dashboard
+    paper.advance_once_sync(observation(1))
+
+    account = paper.live_snapshot()["account"]
+    reconciliation = account["marked_equity_reconciliation"]
+    assert reconciliation["formula"] == "cash_balance + unrealized_pnl + reconciliation_difference"
+    assert reconciliation["composed_equity"] + reconciliation["difference"] == account["current_equity"]
+    assert reconciliation["authoritative_marked_equity"] == account["current_equity"]
+    paper.close()
+
+
+def test_system_snapshot_exposes_policy_compute_diagnostics(tmp_path) -> None:
+    class DiagnosticPolicy(FakePolicy):
+        def diagnostics(self) -> dict[str, Any]:
+            return {
+                "backend": "ROCm",
+                "requested_device": "cuda",
+                "actual_device": "cuda:0",
+                "device_name": "AMD Radeon RX 7800 XT",
+                "rocm_version": "6.4",
+                "inference": "ready",
+                "fitting": "ready",
+            }
+
+    app = create_application(
+        database_path=tmp_path / "paper.sqlite3",
+        tickers=TICKERS,
+        clock=FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC)),
+        market_feed=FakeFeed([]),
+        policy_backend=DiagnosticPolicy([]),
+        notifications=NotificationRecorder(),
+    )
+
+    compute = app.state.paper_dashboard.system_snapshot()["compute"]
+    assert compute["backend"] == "ROCm"
+    assert compute["actual_device"] == "cuda:0"
+    assert compute["inference"] == compute["fitting"] == "ready"
     app.state.paper_dashboard.close()
 
 
@@ -1136,3 +1217,64 @@ def test_production_decision_identity_hashes_exact_market_state_and_current_port
     assert decision.input_id == expected
     changed = backend.decide(observation(0, decision=True), {**current, "BTCUSDT": 0.99})
     assert changed.input_id != decision.input_id
+
+
+def test_restarted_attribution_rejects_changed_canonical_market_state(tmp_path) -> None:
+    class Adapter:
+        def load(self) -> SimpleNamespace:
+            return SimpleNamespace(identity_hash="corrected-market-state")
+
+    selected = b"selected-policy"
+    config = load_config("policy.toml")
+    backend = ProductionPolicyBackend(
+        adapter=Adapter(),
+        backend=SimpleNamespace(),
+        fitting_adapter=Adapter(),
+        attribution_adapter=Adapter(),
+        fitting_backend=SimpleNamespace(),
+        checkpoint_directory=tmp_path,
+        config=config,
+        device="cpu",
+        fitted_model=selected,
+    )
+    current = dict.fromkeys(TICKERS, 0.0)
+    signal_time = observation(0).timestamp
+    durable_input_id = hashlib.sha256(
+        (
+            "original-market-state"
+            + ":"
+            + signal_time.isoformat()
+            + ":"
+            + json.dumps(current, sort_keys=True, separators=(",", ":"))
+        ).encode()
+    ).hexdigest()
+
+    with pytest.raises(RuntimeError, match="canonical Market State identity"):
+        backend._recover_attribution_input(
+            {
+                "signal_time": signal_time.isoformat(),
+                "current_portfolio": current,
+                "model_id": hashlib.sha256(selected).hexdigest(),
+                "input_id": durable_input_id,
+            }
+        )
+
+
+def test_production_diagnostics_report_the_rocm_runtime(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "get_device_name", lambda device: "AMD Radeon RX 7800 XT")
+    monkeypatch.setattr(torch.version, "hip", "6.4.0")
+    backend = object.__new__(ProductionPolicyBackend)
+    backend.device = "cuda:0"
+
+    diagnostics = backend.diagnostics()
+
+    assert diagnostics == {
+        "backend": "ROCm",
+        "requested_device": "cuda:0",
+        "actual_device": "cuda:0",
+        "device_name": "AMD Radeon RX 7800 XT",
+        "rocm_version": "6.4.0",
+        "inference": "ready",
+        "fitting": "ready",
+    }
