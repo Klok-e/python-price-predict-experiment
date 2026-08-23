@@ -1,7 +1,7 @@
 # Profit-Maximizing Crypto Trading
 
-This context describes a causal, cost-aware cryptocurrency portfolio policy and the evidence needed
-to call it profitable.
+This context describes a causal, cost-aware cryptocurrency portfolio policy and the simulated
+evidence used to evaluate it.
 
 ## Language
 
@@ -26,19 +26,14 @@ funding cashflows.
 _Avoid_: Decision-only equity, realized cash balance
 
 **Drawdown Limit**:
-The maximum acceptable Maximum Drawdown within one evidence run; a breach triggers its Risk Stop
-and fails the policy regardless of profit.
+The maximum acceptable Maximum Drawdown within one Paper Account or evidence run; a breach triggers
+its Risk Stop regardless of profit.
 _Avoid_: Drawdown target, soft risk preference
 
 **Risk Stop**:
 The terminal transition after a Drawdown Limit breach: target a flat portfolio at the next eligible
-fill, then permit no further decisions in that run.
+fill, then permit no further decisions for that Paper Account until Manual Reset.
 _Avoid_: Report-only breach, temporary pause, hindsight stop
-
-**Profitable Policy**:
-A Policy Protocol that completes Forward Paper Proof with positive Compounded Net Return and no
-Drawdown Limit breach.
-_Avoid_: Profitable model, accurate predictor, backtest winner, holdout winner
 
 ### Portfolio
 
@@ -57,8 +52,8 @@ may replace a Fitted Policy without changing its Policy Protocol.
 _Avoid_: Policy revision, permanent model
 
 **Policy Revision**:
-Any change to a Policy Protocol. A Policy Revision creates a new proof candidate and resets its
-Proof Clock.
+Any change to a Policy Protocol. A Policy Revision creates a distinct strategy identity in account
+history.
 _Avoid_: Scheduled retraining, new fitted weights
 
 **Market State**:
@@ -100,13 +95,14 @@ edge.
 _Avoid_: No-action error, forced allocation
 
 **Flat Start**:
-The initial state of an independent evidence run: full cash and zero instrument exposure.
+The initial state of a Paper Account or independent evidence run: full cash and zero instrument
+exposure.
 _Avoid_: Inherited position, warm portfolio
 
 **Policy Handoff**:
 Replacement of one Fitted Policy by the next scheduled Fitted Policy while preserving the Current
 Portfolio. It is not a forced liquidation or a Policy Revision.
-_Avoid_: Weekly flattening, proof reset
+_Avoid_: Weekly flattening, account reset
 
 **Trading Universe**:
 The fixed set of liquid perpetual instruments the Trading Policy may hold.
@@ -144,15 +140,30 @@ _Avoid_: Signal-bar close, interpolated fill
 The Reference Price moved against the trade direction by the all-in Transaction Cost assumption.
 _Avoid_: Raw quote, fee-free fill
 
+**Missed Execution**:
+A scheduled Portfolio Change that expires because no fresh executable quote was observed within its
+allowed fill window. It changes neither positions nor cash and remains visible in account history.
+_Avoid_: Rejected signal, zero-turnover decision, delayed fill
+
 **Portfolio Change**:
 The signed difference between Current Portfolio weights and Target Weights that must be executed.
 _Avoid_: Signal change, prediction update
 
-**Qualifying Portfolio Change**:
-A decision-time Portfolio Change whose total executed turnover across all instruments is large
-enough to execute and count once toward Forward Paper Proof. Smaller desired changes accumulate
-against the Current Portfolio rather than creating fills.
-_Avoid_: Prediction update, micro-fill, activity-only trade
+**Decision Record**:
+The durable account history linking one Market State and Current Portfolio to the resulting Target
+Weights, execution outcome, model identity, and any applicable constraints or interventions.
+_Avoid_: Trade row, chart annotation, model explanation
+
+**Model Attribution**:
+A post-hoc estimate of which observed inputs and time regions most influenced a Fitted Policy's
+Target Weights. It is influence evidence, not a causal explanation.
+_Avoid_: Trade reason, model intent, proven cause
+
+**Executable Portfolio Change**:
+A decision-time Portfolio Change whose total turnover across all instruments is large enough to
+execute. Smaller desired changes accumulate against the Current Portfolio rather than creating
+fills.
+_Avoid_: Prediction update, micro-fill, qualifying change
 
 **Transaction Cost**:
 The all-in fee, spread, and slippage adjustment charged once against executed Portfolio Change.
@@ -180,11 +191,11 @@ _Avoid_: Overlapping split, embargo-free boundary
 
 **Development Evidence**:
 Results used to choose or revise a Trading Policy.
-_Avoid_: Final proof, untouched result
+_Avoid_: Real-money result, proof of profitability
 
 **Validated Policy Protocol**:
 A Policy Protocol with positive Compounded Net Return across Walk-Forward Folds and no Drawdown
-Limit breach. It is eligible for Historical Holdout evaluation but is not yet a Profitable Policy.
+Limit breach. It is eligible for Historical Holdout evaluation but remains Development Evidence.
 _Avoid_: Winning model, proven strategy
 
 **Historical Holdout**:
@@ -197,21 +208,27 @@ Sequential evaluation that predicts each next interval before revealing it, whil
 unchanged Policy Protocol to retrain later from observations already revealed.
 _Avoid_: Frozen-weights replay, future-aware refit
 
-**Holdout-Passing Protocol**:
-A Validated Policy Protocol with positive Compounded Net Return and no Drawdown Limit breach on its
-Historical Holdout. It is eligible for Forward Paper Proof but is not yet a Profitable Policy.
-_Avoid_: Proven strategy, reusable holdout winner
-
 **Consumed Holdout**:
 A former Historical Holdout whose results have been observed and may only be treated as Development
 Evidence afterward.
 _Avoid_: Retested holdout, final test after tuning
 
-**Forward Paper Proof**:
-Live-market simulation of a frozen policy protocol using contemporaneous public data and no real
-orders.
-_Avoid_: Historical replay, exchange testnet fill proof
+**Paper Account**:
+A persistent simulated account whose cash, open positions, and history survive operator restarts
+until Manual Reset. Its results are Development Evidence, not proof of real-world profitability.
+_Avoid_: Evidence run, service process, real-money account
 
-**Proof Clock**:
-The required uninterrupted duration and activity of Forward Paper Proof for one Policy Protocol.
-_Avoid_: Combined runs, inherited proof
+**Operating Window**:
+A period during which the paper-trading operator is running and may make decisions and execute
+Portfolio Changes for a Paper Account.
+_Avoid_: Paper account, proof interval, browser session
+
+**Manual Reset**:
+The explicit flattening and archival of one Paper Account followed by creation of a new Flat Start;
+stopping or restarting the operator never performs it implicitly.
+_Avoid_: Automatic recovery, service restart, history deletion
+
+**Operator Intervention**:
+A human-requested pause, flatten, resume, or Manual Reset recorded separately from decisions and
+Portfolio Changes produced by the Trading Policy.
+_Avoid_: Policy decision, manual strategy trade, unexplained account mutation

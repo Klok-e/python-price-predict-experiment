@@ -11,3 +11,6 @@ concentration, and drawdown constraints, because proxy labels and threshold grid
 without maximizing executable profit. Select through purged chronological folds, evaluate a frozen
 Policy Protocol once through Prequential Evaluation on a Historical Holdout, then require Forward
 Paper Proof before adding real-order execution; removed workflows receive no compatibility path.
+
+The Forward Paper Proof requirement is superseded by ADR-0005; the remaining policy and historical
+evaluation decisions stay accepted.
