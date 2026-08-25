@@ -14,13 +14,12 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Literal, cast
 
 import pandas as pd
 
 from .config import PolicyConfig
-from .market_data import CanonicalDataset, InstrumentData, PaperObservationGap, PublicDataUnavailable
-from .simulation import MarketMinute
+from .market_data import CanonicalDataset, InstrumentData, PublicDataUnavailable
 
 ARCHIVE = "https://data.binance.vision/data"
 FUTURES_API = "https://fapi.binance.com"
@@ -255,42 +254,6 @@ class PaperFeedObservation:
         result.validate()
         return result
 
-    def market_minute(self, after: datetime | None) -> MarketMinute:
-        """Create the single auditable minute that a paper session may advance."""
-        expected_open = pd.Timestamp(after) if after is not None else None
-        selected: dict[str, pd.Series] = {}
-        for ticker in self.tickers:
-            frame = self.instruments[ticker].perpetual
-            if frame.empty:
-                raise PublicDataUnavailable(f"{ticker} has no newly closed paper mark")
-            if expected_open is None:
-                selected[ticker] = frame.iloc[-1]
-                continue
-            if len(frame) != 1 or frame.index[0] != expected_open:
-                raise PaperObservationGap("missed one-minute paper marks cannot be reconstructed")
-            selected[ticker] = frame.iloc[0]
-        open_times = {row.name for row in selected.values()}
-        if len(open_times) != 1:
-            raise PublicDataUnavailable("paper marks are not synchronized across the Trading Universe")
-        signal_time = pd.Timestamp(cast(Any, open_times.pop())) + pd.Timedelta(minutes=1)
-        funding_rates: dict[str, float] = {}
-        funding_marks: dict[str, float] = {}
-        for ticker in self.tickers:
-            for event in self.instruments[ticker].settled_funding:
-                if event.event_time.floor("min") == signal_time:
-                    funding_rates[ticker] = event.rate
-                    funding_marks[ticker] = event.mark_price
-        return MarketMinute(
-            timestamp=signal_time.to_pydatetime(),
-            mark_prices={ticker: float(selected[ticker]["close"]) for ticker in self.tickers},
-            bid={ticker: self.quotes[ticker].bid for ticker in self.tickers},
-            ask={ticker: self.quotes[ticker].ask for ticker in self.tickers},
-            quote_exchange_times={ticker: self.quotes[ticker].exchange_time.to_pydatetime() for ticker in self.tickers},
-            quote_observed_at=self.observed_at.to_pydatetime(),
-            funding_rates=funding_rates,
-            funding_mark_prices=funding_marks,
-        )
-
 
 @dataclass
 class PublicPaperAdapter:
@@ -411,7 +374,7 @@ class PublicPaperAdapter:
             cursor = next_cursor
         if not rows:
             if irreconstructible_gap:
-                raise PaperObservationGap(f"{ticker} required paper minute range is missing")
+                raise PublicDataUnavailable(f"{ticker} required paper minute range is missing")
             raise PublicDataUnavailable(f"{ticker} required public one-minute rows are missing")
         raw = pd.DataFrame(rows, columns=KLINE_COLUMNS)
         raw.index = pd.DatetimeIndex(pd.to_datetime(pd.to_numeric(raw["open_time"]), unit="ms", utc=True))
@@ -425,7 +388,7 @@ class PublicPaperAdapter:
         expected = pd.date_range(first_open, latest_open, freq="min", tz="UTC")
         if not raw.index.equals(expected):
             if irreconstructible_gap:
-                raise PaperObservationGap(f"{ticker} required paper minute range has a gap")
+                raise PublicDataUnavailable(f"{ticker} required paper minute range has a gap")
             raise PublicDataUnavailable(f"{ticker} required closed one-minute rows are stale or missing")
         columns = ("open", "high", "low", "close", "volume", "taker_buy_volume", "trades")
         frame = raw.loc[:, list(columns)].apply(pd.to_numeric, errors="coerce")

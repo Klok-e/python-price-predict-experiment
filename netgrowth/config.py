@@ -9,6 +9,26 @@ from datetime import date
 from hashlib import sha256
 from pathlib import Path
 
+_POLICY_RUNTIME_FILES = (
+    "config.py",
+    "market_data.py",
+    "policy.py",
+    "simulation.py",
+    "torch_backend.py",
+    "training.py",
+)
+
+
+def _policy_code_hash() -> str:
+    """Hash Policy Protocol behavior without coupling it to UI or dependency metadata."""
+    digest = sha256()
+    package = Path(__file__).parent
+    for name in _POLICY_RUNTIME_FILES:
+        path = package / name
+        digest.update(name.encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
 
 @dataclass(frozen=True)
 class PolicyConfig:
@@ -98,6 +118,16 @@ class PolicyConfig:
     def identity_hash(self) -> str:
         payload = json.dumps(self.protocol_manifest, sort_keys=True, separators=(",", ":"))
         return sha256(payload.encode()).hexdigest()
+
+    @property
+    def protocol_id(self) -> str:
+        """Policy Revision identity shared by evidence and Paper Account operation."""
+        return sha256(f"{self.identity_hash}:{self.code_hash}".encode()).hexdigest()
+
+    @property
+    def code_hash(self) -> str:
+        """Identity of the source files that implement Policy Protocol behavior."""
+        return _policy_code_hash()
 
     @property
     def compatibility_hash(self) -> str:

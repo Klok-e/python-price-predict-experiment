@@ -16,10 +16,6 @@ class PublicDataUnavailable(RuntimeError):
     """A required contemporaneous public observation is absent or unusable."""
 
 
-class PaperObservationGap(PublicDataUnavailable):
-    """A legacy contemporaneous feed missed an irreconstructible executable quote."""
-
-
 @dataclass
 class InstrumentData:
     perpetual: pd.DataFrame

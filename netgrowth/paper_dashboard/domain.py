@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -24,6 +25,31 @@ class LifecycleState(StrEnum):
 class DataStatus(StrEnum):
     FRESH = "Fresh"
     STALE = "Data Stale"
+
+
+POLICY_COMPATIBILITY_DIMENSIONS = frozenset(
+    {
+        "trading_universe",
+        "account_currency",
+        "position_semantics",
+        "execution_semantics",
+        "risk_semantics",
+    }
+)
+
+
+def policy_revision_is_compatible(
+    current: Mapping[str, object],
+    proposed: Mapping[str, object],
+    *,
+    lifecycle: LifecycleState,
+) -> bool:
+    """Decide whether a Policy Revision can preserve one Paper Account."""
+    return (
+        lifecycle is not LifecycleState.MIGRATION_REQUIRED
+        and proposed.keys() >= POLICY_COMPATIBILITY_DIMENSIONS
+        and (not current or current == proposed)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +138,8 @@ class PaperAccountState:
     model_id: str = "unknown"
     model_checkpoint: str | None = None
     compatibility_manifest: dict[str, Any] = field(default_factory=dict)
+    proposed_protocol_id: str | None = None
+    proposed_compatibility_manifest: dict[str, Any] = field(default_factory=dict)
     fitting: dict[str, Any] = field(default_factory=lambda: {"status": "idle"})
     notification_error: str | None = None
     backup_error: str | None = None

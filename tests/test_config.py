@@ -20,3 +20,5 @@ def test_policy_protocol_manifest_separates_revision_from_account_compatibility(
         "risk_semantics": "marked-equity-no-leverage-drawdown-stop-v1",
     }
     assert config.compatibility_hash != config.identity_hash
+    assert len(config.protocol_id) == 64
+    assert config.protocol_id != config.identity_hash

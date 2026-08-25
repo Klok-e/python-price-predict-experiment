@@ -137,10 +137,7 @@ class SQLitePaperStore(AbstractContextManager["SQLitePaperStore"]):
     ) -> PaperAccountState:
         row = self._connection.execute("SELECT account_id FROM accounts WHERE active = 1").fetchone()
         if row is not None:
-            state = self.load_account(str(row["account_id"]))
-            if state.tickers != tickers:
-                raise ValueError("active Paper Account Trading Universe is incompatible")
-            return state
+            return self.load_account(str(row["account_id"]))
 
         account_id = str(uuid4())
         state = PaperAccountState.flat_start(
@@ -492,6 +489,8 @@ class SQLitePaperStore(AbstractContextManager["SQLitePaperStore"]):
         replacement.model_id = state.model_id
         replacement.model_checkpoint = state.model_checkpoint
         replacement.compatibility_manifest = state.compatibility_manifest.copy()
+        replacement.proposed_protocol_id = state.proposed_protocol_id
+        replacement.proposed_compatibility_manifest = state.proposed_compatibility_manifest.copy()
         replacement.fitting = state.fitting.copy()
         replacement_window = str(uuid4())
         window_boundary = window_ended_at or now

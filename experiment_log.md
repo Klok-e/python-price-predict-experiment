@@ -223,3 +223,52 @@ Routine infrastructure tests are not experiments.
   execution detail, explicitly approximate attribution, and correct Kyiv/UTC rendering without browser
   errors. Review follow-up made funding markers instrument-specific, removed client protocol aliases,
   and used cooperative admission so attribution never overlaps pending fills or active policy fitting.
+
+### 2026-08-25 - Policy Lifecycle and service hard-cut acceptance
+
+- Configuration hash: Policy configuration
+  `b088750a01e5e323cf5c0736cf7b26640adb3534edd12f2ff27f15418a89e364`
+- Code hash: Policy runtime
+  `fc0f9aad7daf94d0f76691272fc3cf4c897dc057b3f8644bf9f2984059eb7d8e`;
+  code-aware Policy Protocol
+  `c17185fb9c4369eaaea0ffb57ee575b44611a92ec9bb25b998e09fd3c3651e9c`
+- Data hash: retained live Decision Record Market State identity
+  `85c16f7d6181f025b3469a72870b25c743c0669363bb1889031c99822da5b8b5`;
+  attribution tensor input
+  `9f404e8da23cb827abb5736ab9df901a6cf5833aa5be78e3335ea4d02b3f8d55`
+- Model hash: retained content-addressed ROCm Fitted Policy
+  `dc34eb25577415d9e8f6eac337a79c7bc3e0838451e03e2d9dc89c97b30bb09e`
+- Walk-Forward Compounded Net Return: not rerun; this operational lifecycle cutover does not create
+  new historical model evidence or a profitability claim
+- Maximum Drawdown by fold: not rerun; the live Paper Account Maximum Drawdown at final acceptance
+  was 0.816806%
+- Turnover / costs / funding: the retained account had $1,964.503871 turnover notional, $1.375153
+  Transaction Cost, and -$0.766302 funding cashflow; the compatible Policy Revision boundary added
+  no fill, position change, or realized-accounting mutation
+- Historical Holdout or Paper Account state: legacy proof protocol
+  `39a5a83c6bbfae7a338b7f22f30cc88641a61b0a938d2a31956671caeec99e04`
+  remains immutable Development Evidence under
+  `computed-data/evidence/legacy/paper-proof-cutover-20260823T180759Z/`; all nine `SHA256SUMS`
+  entries passed. Persistent Paper Account `11024fa6-7ead-468e-b603-27ce0e04a7ab` remained Trading
+  with the same four position quantities, Fitted Policy, checkpoint, and accounting history after
+  restart without Manual Reset.
+- Verdict: Policy Lifecycle and hard-cut acceptance passed as Paper Account Development Evidence;
+  no result here establishes real-world profitability or authorizes real-money trading
+- Notes: `uv lock --check`, `ruff format --check .`, `ruff check .`, strict `mypy`, and the complete
+  deterministic suite passed (`132 passed, 1 skipped, 14` third-party Torch deprecation warnings).
+  Standards and Spec re-review reported no remaining findings. `systemd-analyze --user verify` passed;
+  installed and source unit hashes both equal
+  `3eef7d61137443fbb05f85d708f1cc3bf74abbd381e4f1ecb998e6f04ed4a553`.
+  The obsolete `netgrowth-paper-proof.service` is `not-found`; user lingering is enabled; the exact
+  replacement unit is enabled and active with zero restarts and listens only on `127.0.0.1:8765`.
+  Restart replaced PID `858` with PID `86003`. Before the application opened its new Operating Window,
+  production completed a ROCm inference preflight at `2026-08-25T15:06:15.549241+00:00`, proved the
+  retained model compatible, and atomically recorded Policy Revision event
+  `e53fb065-2179-4cf1-8adf-65415b93157b` from protocol `b088750a...` to `c17185fb...`. The old segment
+  ended and the new segment began at the same $10,026.973434 equity boundary; subsequent public marks
+  legitimately continued account metrics. Decision Record `45099a67-92af-4794-810f-0a30aa83bf11`
+  (`e5376894e65bc1422a41d28c26458b4e`, Signal Time `2026-08-25T13:45:00+00:00`) retained its
+  `below_threshold` final outcome and completed Integrated Gradients attribution
+  `beb8b5a5-1248-40fa-b180-8e07bd3871af`. Agent-browser verified Live, History, System, the exact
+  record, and its approximate post-hoc attribution through the restarted unit; browser console and
+  page-error logs were empty, and the isolated session was closed.

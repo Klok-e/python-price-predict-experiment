@@ -1,49 +1,21 @@
-# 02 — Goal run: produce Profitable Policy
-
-**What to build:** Run the approved long autonomous goal from the cleaned foundation through the
-complete Direct Net-Growth Portfolio Policy implementation, real historical experiments, initial
-Historical Holdout, and Forward Paper Proof. Continue truthful, recorded Policy Revisions until one
-Policy Protocol satisfies the definition of Profitable Policy; never substitute prediction metrics,
-reused holdout evidence, or partial paper time for that outcome.
-
-**Blocked by:** 01 — Hard-cut repository cleanup.
+# 02 — Build the Direct Net-Growth Policy and Development Evidence
 
 **Status:** resolved
 
-- [x] Implement the deep workflow and four operational commands for canonical data synchronization,
-      validation, Historical Holdout evaluation, and public-data-only paper operation.
-- [x] Synchronize maximum available Binance-native history from 2020 onward for the fixed BTCUSDT,
-      ETHUSDT, BNBUSDT, and SOLUSDT USD-M perpetual Trading Universe.
-- [x] Build causal multi-timeframe Market State with explicit Optional Market Input masks and strict
-      Execution-Complete Interval validation.
-- [x] Implement continuous Target Weights from Current Portfolio, No Leverage, 50% per-ticker
-      concentration, zero-yield cash, 1% Qualifying Portfolio Change threshold, funding, realistic
-      Effective Fills, one-minute Marked Equity, and terminal Risk Stop.
-- [x] Implement direct Net Log Growth training with the drawdown constraint, linear sanity policy,
-      declared causal temporal-convolution candidates, three-seed stability selection, and the
-      actual averaged-weight ensemble.
-- [x] Implement twelve purged, prequential 90-day Walk-Forward Folds with Sunday retraining and
-      Policy Handoff; reject non-positive aggregate return or any Drawdown Limit breach.
-- [x] Write only reproducibility manifests, structured reports, equity, trades, and frozen Fitted
-      Policy artifacts identified by configuration, code, data, and model hashes.
-- [x] Pass focused behavioral tests for causality, resampling, data completeness, fills, costs,
-      funding, portfolio constraints, turnover, drawdown, Risk Stop, folds, evidence states,
-      reproducibility, and one synthetic end-to-end profitable pattern.
-- [x] Run real validation experiments and append every exact configuration, identity, metric set,
-      and verdict to the experiment log; continue Policy Revisions until a Validated Policy Protocol
-      has positive Compounded Net Return and every fold remains within 20% Maximum Drawdown.
-- [x] Evaluate the initial May-July 2026 Historical Holdout exactly once and record the immutable
-      Holdout-Passing or Consumed outcome without relabeling reused evidence.
-- [x] If the initial holdout fails, promote it to Development Evidence, continue recorded development,
-      and require fresh Forward Paper Proof for the revised Policy Protocol.
-- [ ] Operate Forward Paper Proof from a Flat Start using public data only, preserving Current
-      Portfolio across scheduled Fitted Policy replacement and resetting Proof Clock after every
-      Policy Revision.
-- [ ] Keep this goal open until one unchanged Policy Protocol records positive Compounded Net Return,
-      at least 60 elapsed days, at least 100 Qualifying Portfolio Changes, and no Drawdown Limit
-      breach.
-- [x] Do not add authenticated exchange access or real-order placement; live-capital authorization
-      remains a separate post-proof decision.
+This historical ticket delivered the direct portfolio-policy implementation, Binance-native market
+data, causal validation, immutable artifacts, and the initial Historical Holdout. The proof-oriented
+paper-operation portion was abandoned and is superseded by
+`.scratch/paper-trading-dashboard/spec.md` and ADR-0005.
+
+- [x] Implement the deep workflow and the data synchronization, validation, and Historical Holdout
+      commands retained as Development Evidence.
+- [x] Build causal Market State, direct Target Weights, realistic execution costs, funding, portfolio
+      constraints, scheduled fitting, and terminal Risk Stop behavior.
+- [x] Record validation and Historical Holdout evidence without substituting prediction metrics or
+      reused holdout evidence.
+- [x] Remove the proof operator, proof clock, proof gate, qualifying-change terminology, service,
+      configuration, tests, and compatibility aliases during the persistent Paper Account cutover.
+- [x] Keep authenticated exchange access and real-order placement outside repository scope.
 
 ## Comments
 
@@ -70,11 +42,13 @@ reused holdout evidence, or partial paper time for that outcome.
   `2026-08-23T17:12:00Z` under the enabled, lingering `netgrowth-paper-proof.service`, advanced
   through consecutive `17:12` and `17:13` observations from PID `339493` with zero restarts, and
   remains active. The 60-day / 100-change / positive-return / no-breach gate remains open.
+- 2026-08-20 through 2026-08-23: the historical policy, validation, and holdout work completed; exact
+  immutable artifact identities and metrics remain recorded in `experiment_log.md` and git history.
+- 2026-08-23: the persistent Paper Account explicitly superseded proof-oriented operation. The legacy
+  state was archived as immutable Development Evidence and the old service was removed.
 
 ## Answer
 
-Implementation, verification, review, commit, fresh validation, and unattended Forward Paper Proof
-launch are complete. On 2026-08-23 the user explicitly closed the implementation scope without
-waiting interactively for the 60-day gate. This resolution does not claim a Profitable Policy: the
-two unchecked Forward Paper Proof requirements remain unproven, and the enabled service continues
-collecting that evidence independently.
+The reusable Trading Policy and Development Evidence workflows are complete. Ongoing operation is
+owned exclusively by the persistent Paper Account; this ticket carries no active proof gate or
+independent service.

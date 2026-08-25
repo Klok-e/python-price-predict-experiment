@@ -70,27 +70,6 @@ class WorkflowResult:
     artifact_directory: Path
 
 
-_POLICY_RUNTIME_FILES = (
-    "config.py",
-    "market_data.py",
-    "policy.py",
-    "simulation.py",
-    "torch_backend.py",
-    "training.py",
-)
-
-
-def _policy_code_hash() -> str:
-    """Hash Policy Protocol behavior without coupling it to UI or dependency metadata."""
-    digest = sha256()
-    package = Path(__file__).parent
-    for name in _POLICY_RUNTIME_FILES:
-        path = package / name
-        digest.update(name.encode())
-        digest.update(path.read_bytes())
-    return digest.hexdigest()
-
-
 class NetGrowthWorkflow:
     """Own synchronization, validation, and one-time Historical Holdout evidence."""
 
@@ -120,7 +99,7 @@ class NetGrowthWorkflow:
     @property
     def protocol_hash(self) -> str:
         """Policy Revision identity; Fitted Policy weights and dashboard code are excluded."""
-        return sha256(f"{self.config.identity_hash}:{_policy_code_hash()}".encode()).hexdigest()
+        return self.config.protocol_id
 
     @classmethod
     def from_paths(
@@ -178,7 +157,7 @@ class NetGrowthWorkflow:
         model_hash = sha256(outcome.model_bytes).hexdigest()
         identity = RunIdentity(
             config_hash=self.config.identity_hash,
-            code_hash=_policy_code_hash(),
+            code_hash=self.config.code_hash,
             data_hash=canonical.identity_hash,
             model_hash=model_hash,
         )

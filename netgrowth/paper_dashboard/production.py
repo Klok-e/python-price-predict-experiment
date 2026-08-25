@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -30,7 +30,8 @@ from netgrowth.torch_backend import (
 )
 
 from .application import FittedPolicyCandidate, create_application
-from .domain import MarketObservation, PolicyDecision
+from .domain import LifecycleState, MarketObservation, PolicyDecision, policy_revision_is_compatible
+from .persistence import SQLitePaperStore
 
 
 def _decision_input_id(
@@ -174,14 +175,15 @@ class ProductionPolicyBackend:
             observation.timestamp,
         )
         if result.refitted:
-            self.fitted_model = result.model_bytes
+            self._attribution_inputs.pop(input_id, None)
+            raise RuntimeError("ordinary decision must not replace the active Fitted Policy")
         model_id = sha256(self.fitted_model).hexdigest()
         return PolicyDecision(
             raw_target_weights=result.target_weights,
             target_weights=result.target_weights,
             model_id=model_id,
             input_id=input_id,
-            protocol_id=self.config.identity_hash,
+            protocol_id=self.config.protocol_id,
         )
 
     def prepare(self, *, observed_at: datetime | None = None) -> None:
@@ -217,10 +219,10 @@ class ProductionPolicyBackend:
             second=0,
             microsecond=0,
         )
-        completed_at = fitting.get("completed_at")
-        if not isinstance(completed_at, str):
+        attempted_at = fitting.get("completed_at") or fitting.get("due_at")
+        if not isinstance(attempted_at, str):
             return True
-        return datetime.fromisoformat(completed_at).astimezone(UTC) < deadline
+        return datetime.fromisoformat(attempted_at).astimezone(UTC) < deadline
 
     def fit(
         self,
@@ -432,10 +434,33 @@ def run_dashboard(
     config = load_config(config_path)
     operational = Path(operational_directory)
     operational.mkdir(parents=True, exist_ok=True)
-    adapter = PublicPaperAdapter(Path(data_directory), config.tickers)
-    fitting_adapter = PublicPaperAdapter(Path(data_directory), config.tickers)
-    attribution_adapter = PublicPaperAdapter(Path(data_directory), config.tickers)
-    fitted_model = _selected_fitted_policy(operational)
+    database_path = operational / "paper-account.sqlite3"
+    with SQLitePaperStore(database_path, backup_directory=operational / "backups") as store:
+        restored = store.load_active_account()
+    account_tickers = restored.tickers if restored is not None else config.tickers
+    restored_manifest = restored.compatibility_manifest if restored is not None else {}
+    restored_lifecycle = restored.lifecycle if restored is not None else LifecycleState.TRADING
+    compatible = policy_revision_is_compatible(
+        restored_manifest,
+        config.compatibility_manifest,
+        lifecycle=restored_lifecycle,
+    )
+    revision_required = restored is None or (
+        restored.protocol_id != config.protocol_id or restored.compatibility_manifest != config.compatibility_manifest
+    )
+    adapter = PublicPaperAdapter(Path(data_directory), account_tickers)
+    fitting_adapter = PublicPaperAdapter(Path(data_directory), account_tickers)
+    attribution_adapter = PublicPaperAdapter(Path(data_directory), account_tickers)
+    checkpoint = (operational / "checkpoints" / "current.pt").resolve()
+    if restored is not None and restored.model_id != "unknown":
+        if restored.model_checkpoint is None:
+            raise RuntimeError("durable Fitted Policy identity has no checkpoint")
+        checkpoint = Path(restored.model_checkpoint)
+        fitted_model = checkpoint.read_bytes()
+        if sha256(fitted_model).hexdigest() != restored.model_id:
+            raise RuntimeError("persisted Fitted Policy checkpoint does not match Paper Account state")
+    else:
+        fitted_model = _selected_fitted_policy(operational)
     policy = ProductionPolicyBackend(
         adapter=adapter,
         backend=TorchEvaluationBackend(operational / "checkpoints"),
@@ -447,43 +472,42 @@ def run_dashboard(
         device=device,
         fitted_model=fitted_model,
     )
+    model_compatibility: dict[str, Any] | None = None
+    revision_prepared = False
+    if compatible and revision_required and restored is not None and restored.model_id != "unknown":
+        policy.prepare()
+        model_compatibility = {
+            "model_id": restored.model_id,
+            "method": "production-inference-preflight",
+            "checked_at": datetime.now(tz=UTC).isoformat(),
+        }
+        revision_prepared = True
     app = create_application(
-        database_path=operational / "paper-account.sqlite3",
+        database_path=database_path,
         backup_directory=operational / "backups",
-        tickers=config.tickers,
+        tickers=account_tickers,
         market_feed=ProductionMarketFeed(adapter),
         policy_backend=policy,
         policy_fitter=policy,
         attribution_backend=policy,
         notifications=DesktopNotifications(),
-        simulation_config=simulation_config_for_policy(config, mode="paper"),
+        simulation_config=replace(simulation_config_for_policy(config, mode="paper"), tickers=account_tickers),
         starting_equity=config.initial_equity,
         operator_interval_seconds=float(config.mark_minutes * 60),
-        policy_preparer=policy.prepare,
+        policy_preparer=policy.prepare if compatible and not revision_prepared else None,
     )
     paper = app.state.paper_dashboard
-    if paper.state.model_checkpoint is not None:
-        persisted_checkpoint = Path(paper.state.model_checkpoint)
-        persisted_model = persisted_checkpoint.read_bytes()
-        if sha256(persisted_model).hexdigest() != paper.state.model_id:
-            raise RuntimeError("persisted Fitted Policy checkpoint does not match Paper Account state")
-        fitted_model = persisted_model
-        policy.fitted_model = persisted_model
-    compatible = (
-        not paper.state.compatibility_manifest or paper.state.compatibility_manifest == config.compatibility_manifest
-    )
-    if paper.state.protocol_id != config.identity_hash or not paper.state.compatibility_manifest:
+    if paper.state.protocol_id != config.protocol_id or not paper.state.compatibility_manifest:
         paper.register_policy_revision(
-            protocol_id=config.identity_hash,
-            compatible=compatible,
+            protocol_id=config.protocol_id,
             compatibility=config.compatibility_manifest,
+            model_compatibility=model_compatibility,
         )
     model_id = sha256(fitted_model).hexdigest()
-    checkpoint = str((operational / "checkpoints" / "current.pt").resolve())
     if compatible and paper.state.model_id == "unknown":
         paper.register_initial_fitted_policy(
             model_id=model_id,
-            checkpoint=checkpoint,
+            checkpoint=str(checkpoint),
         )
     elif compatible and paper.state.model_id != model_id:
         raise RuntimeError("the durable Fitted Policy differs from the selected production checkpoint")

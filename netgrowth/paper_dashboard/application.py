@@ -43,6 +43,7 @@ from .domain import (
     PendingExecution,
     PolicyDecision,
     SystemClock,
+    policy_revision_is_compatible,
 )
 from .persistence import SQLitePaperStore, StateVersionConflict
 
@@ -558,6 +559,10 @@ class PaperDashboardApplication:
                     raise RuntimeError("use advance_once with a synchronous policy backend for serialized advancement")
                 decision = self._coerce_decision(supplied, observation, current_weights)
                 self._validate_target(decision.target_weights)
+                if self.state.model_id != "unknown" and decision.model_id != self.state.model_id:
+                    raise RuntimeError("ordinary decision cannot replace the durable Fitted Policy")
+                if self.state.protocol_id != "unknown" and decision.protocol_id != self.state.protocol_id:
+                    raise RuntimeError("ordinary decision cannot bypass the durable Policy Revision")
                 decision_id = hashlib.sha256(
                     f"{self.state.account_id}:{observation.timestamp.isoformat()}:{decision.input_id}".encode()
                 ).hexdigest()[:32]
@@ -578,8 +583,6 @@ class PaperDashboardApplication:
                 self.state.pending_execution = schedule
                 self.state.last_decision_at = observation.timestamp
                 self.state.target_weights = decision.target_weights.copy()
-                self.state.model_id = decision.model_id
-                self.state.protocol_id = decision.protocol_id
                 events.append(
                     (
                         "DecisionRecord",
@@ -800,7 +803,11 @@ class PaperDashboardApplication:
             self.state.model_checkpoint = checkpoint
             if protocol_id is not None:
                 self.state.protocol_id = protocol_id
-            self.state.fitting = {"status": "idle", "completed_at": now.isoformat()}
+            self.state.fitting = {
+                **self.state.fitting,
+                "status": "idle",
+                "completed_at": now.isoformat(),
+            }
             self._commit(
                 [
                     (
@@ -811,6 +818,9 @@ class PaperDashboardApplication:
                             "new_model_id": new_model_id,
                             "checkpoint": checkpoint,
                             "protocol_id": self.state.protocol_id,
+                            "due_at": self.state.fitting.get("due_at"),
+                            "started_at": self.state.fitting.get("started_at"),
+                            "completed_at": self.state.fitting["completed_at"],
                         },
                         None,
                         None,
@@ -851,7 +861,11 @@ class PaperDashboardApplication:
 
     async def maybe_start_policy_fitting(self) -> None:
         fitter = self.policy_fitter
-        if fitter is None or self.state.last_observation_at is None:
+        if (
+            fitter is None
+            or self.state.last_observation_at is None
+            or self.state.lifecycle not in {LifecycleState.TRADING, LifecycleState.PAUSED}
+        ):
             return
         if self._fitting_task is not None and not self._fitting_task.done():
             return
@@ -884,15 +898,16 @@ class PaperDashboardApplication:
                 observed_at,
                 current_weights,
             )
-            rollback = fitter.activate(candidate)
-            try:
-                self.complete_policy_handoff(
-                    new_model_id=candidate.model_id,
-                    checkpoint=candidate.checkpoint,
-                )
-            except BaseException:
-                rollback()
-                raise
+            with self._owner_lock:
+                rollback = fitter.activate(candidate)
+                try:
+                    self.complete_policy_handoff(
+                        new_model_id=candidate.model_id,
+                        checkpoint=candidate.checkpoint,
+                    )
+                except BaseException:
+                    rollback()
+                    raise
         except asyncio.CancelledError:
             raise
         except Exception as error:
@@ -917,6 +932,7 @@ class PaperDashboardApplication:
         with self._owner_lock:
             now = self._now()
             self.state.fitting = {
+                **self.state.fitting,
                 "status": "failed",
                 "error": str(error),
                 "failed_at": now.isoformat(),
@@ -1044,26 +1060,103 @@ class PaperDashboardApplication:
         self,
         *,
         protocol_id: str,
-        compatible: bool,
         compatibility: dict[str, Any],
+        fitted_policy: FittedPolicyCandidate | None = None,
+        model_compatibility: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         with self._owner_lock:
             now = self._now()
+            compatible = policy_revision_is_compatible(
+                self.state.compatibility_manifest,
+                compatibility,
+                lifecycle=self.state.lifecycle,
+            )
             if compatible:
+                revision_changed = (
+                    self.state.protocol_id != protocol_id or self.state.compatibility_manifest != compatibility
+                )
+                model_changed = fitted_policy is not None and fitted_policy.model_id != self.state.model_id
+                if not revision_changed and not model_changed:
+                    return self.live_snapshot()
                 old_protocol_id = self.state.protocol_id
-                self.state.protocol_id = protocol_id
-                self.state.compatibility_manifest = compatibility.copy()
-                event_type = "PolicyRevision"
-                payload = {
-                    "old_protocol_id": old_protocol_id,
-                    "new_protocol_id": protocol_id,
-                    "compatibility": compatibility,
-                }
+                old_model_id = self.state.model_id
+                compatibility_evidence = dict(model_compatibility) if model_compatibility is not None else None
+                if (
+                    revision_changed
+                    and old_model_id != "unknown"
+                    and fitted_policy is None
+                    and compatibility_evidence is None
+                ):
+                    raise RuntimeError("a compatible Policy Revision must provide active-model compatibility evidence")
+                if compatibility_evidence is not None and compatibility_evidence.get("model_id") != old_model_id:
+                    raise ValueError("model compatibility evidence does not identify the active Fitted Policy")
+                rollback: Callable[[], None] | None = None
+                if model_changed:
+                    if self.policy_fitter is None or fitted_policy is None:
+                        raise RuntimeError("a replacement Fitted Policy requires the configured policy fitter")
+                    rollback = self.policy_fitter.activate(fitted_policy)
+                try:
+                    self.state.protocol_id = protocol_id
+                    self.state.compatibility_manifest = compatibility.copy()
+                    self.state.proposed_protocol_id = None
+                    self.state.proposed_compatibility_manifest = {}
+                    events: list[tuple[str, datetime, dict[str, Any], str | None, str | None]] = []
+                    if revision_changed:
+                        events.append(
+                            (
+                                "PolicyRevision",
+                                now,
+                                {
+                                    "old_protocol_id": old_protocol_id,
+                                    "new_protocol_id": protocol_id,
+                                    "compatibility": compatibility,
+                                    "model_compatibility": compatibility_evidence,
+                                },
+                                None,
+                                None,
+                            )
+                        )
+                    if model_changed and fitted_policy is not None:
+                        self.state.model_id = fitted_policy.model_id
+                        self.state.model_checkpoint = fitted_policy.checkpoint
+                        events.append(
+                            (
+                                "PolicyHandoff",
+                                now,
+                                {
+                                    "kind": "policy_revision",
+                                    "old_model_id": old_model_id,
+                                    "new_model_id": fitted_policy.model_id,
+                                    "checkpoint": fitted_policy.checkpoint,
+                                    "protocol_id": protocol_id,
+                                    "due_at": None,
+                                    "started_at": None,
+                                    "completed_at": now.isoformat(),
+                                },
+                                None,
+                                None,
+                            )
+                        )
+                    self._commit(events)
+                except BaseException:
+                    if rollback is not None:
+                        rollback()
+                    raise
+                self._deliver_notifications()
+                return self.live_snapshot()
             else:
+                if (
+                    self.state.lifecycle is LifecycleState.MIGRATION_REQUIRED
+                    and self.state.proposed_protocol_id == protocol_id
+                    and self.state.proposed_compatibility_manifest == compatibility
+                ):
+                    return self.live_snapshot()
+                cancelled = self.state.pending_execution
                 self.state.lifecycle = LifecycleState.MIGRATION_REQUIRED
                 self.state.simulation.pending = None
                 self.state.pending_execution = None
-                event_type = "MigrationRequired"
+                self.state.proposed_protocol_id = protocol_id
+                self.state.proposed_compatibility_manifest = compatibility.copy()
                 payload = {"proposed_protocol_id": protocol_id, "compatibility": compatibility}
                 self._queue_notification(
                     f"migration-required:{self.state.account_id}:{protocol_id}",
@@ -1071,7 +1164,21 @@ class PaperDashboardApplication:
                     payload,
                     now,
                 )
-            self._commit([(event_type, now, payload, None, None)])
+            events = [("MigrationRequired", now, payload, None, None)]
+            if cancelled is not None and cancelled.kind == "policy":
+                events.append(
+                    (
+                        "DecisionCompleted",
+                        now,
+                        {
+                            "decision_id": cancelled.decision_id,
+                            "outcome": "cancelled_by_policy_revision",
+                        },
+                        cancelled.decision_id,
+                        None,
+                    )
+                )
+            self._commit(events)
             self._deliver_notifications()
             return self.live_snapshot()
 
@@ -1261,6 +1368,14 @@ class PaperDashboardApplication:
             else None
         )
         notification_health = self.store.notification_health()
+        last_handoff = next(
+            (
+                event.payload
+                for event in reversed(self.store.events(state.account_id))
+                if event.event_type == "PolicyHandoff"
+            ),
+            None,
+        )
         diagnostics = getattr(self.policy_backend, "diagnostics", None)
         try:
             compute = diagnostics() if callable(diagnostics) else {"backend": "unreported"}
@@ -1276,10 +1391,14 @@ class PaperDashboardApplication:
             "policy": {
                 "protocol_id": state.protocol_id,
                 "model_id": state.model_id,
+                "model_checkpoint": state.model_checkpoint,
                 "lifecycle": state.lifecycle.value,
                 "compatibility": state.compatibility_manifest,
+                "proposed_protocol_id": state.proposed_protocol_id,
+                "proposed_compatibility": state.proposed_compatibility_manifest,
             },
             "fitting": state.fitting,
+            "last_policy_handoff": last_handoff,
             "compute": compute,
             "operating_windows": self.store.operating_windows(state.account_id),
             "notifications": notification_health,

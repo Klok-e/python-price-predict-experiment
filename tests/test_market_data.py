@@ -16,7 +16,6 @@ from netgrowth.market_data import (
     CanonicalDataset,
     InMemoryMarketData,
     InstrumentData,
-    PaperObservationGap,
     build_market_state,
 )
 
@@ -221,11 +220,7 @@ def test_public_paper_mark_fetches_only_execution_complete_inputs(monkeypatch, t
 
     monkeypatch.setattr("urllib.request.urlopen", public_api)
 
-    observed = PublicPaperAdapter(tmp_path, TICKERS).mark(datetime(2026, 8, 3, 12, 1, 59, 999000, tzinfo=UTC))
-
-    assert observed.market_minute(datetime(2026, 8, 3, 12, 2, tzinfo=UTC)).timestamp == datetime(
-        2026, 8, 3, 12, 3, tzinfo=UTC
-    )
+    PublicPaperAdapter(tmp_path, TICKERS).mark(datetime(2026, 8, 3, 12, 1, 59, 999000, tzinfo=UTC))
     assert sum("/fapi/v1/klines" in url for url in requested) == len(TICKERS)
     assert sum("/fapi/v1/fundingRate" in url for url in requested) == len(TICKERS)
     assert not any("/api/v3/klines" in url for url in requested)
@@ -233,7 +228,7 @@ def test_public_paper_mark_fetches_only_execution_complete_inputs(monkeypatch, t
     assert not any("openInterestHist" in url for url in requested)
 
 
-def test_public_paper_mark_classifies_a_missing_required_range_as_observation_gap(monkeypatch, tmp_path) -> None:
+def test_public_paper_mark_reports_a_missing_required_range_as_unavailable(monkeypatch, tmp_path) -> None:
     ticker = "BTCUSDT"
     server_time = pd.Timestamp("2026-08-03 12:03:30", tz="UTC")
     server_ms = int(server_time.timestamp() * 1_000)
@@ -252,7 +247,7 @@ def test_public_paper_mark_classifies_a_missing_required_range_as_observation_ga
 
     monkeypatch.setattr("urllib.request.urlopen", public_api)
 
-    with pytest.raises(PaperObservationGap, match="range has a gap"):
+    with pytest.raises(PublicDataUnavailable, match="range has a gap"):
         PublicPaperAdapter(tmp_path, (ticker,)).mark(datetime(2026, 8, 3, 12, 0, 59, 999000, tzinfo=UTC))
 
 
@@ -274,10 +269,8 @@ def test_public_paper_mark_retries_one_just_closed_candle_during_publication_lag
 
     monkeypatch.setattr("urllib.request.urlopen", public_api)
 
-    with pytest.raises(PublicDataUnavailable) as caught:
+    with pytest.raises(PublicDataUnavailable):
         PublicPaperAdapter(tmp_path, (ticker,)).mark(datetime(2026, 8, 3, 12, 1, 59, 999000, tzinfo=UTC))
-
-    assert not isinstance(caught.value, PaperObservationGap)
 
 
 def test_public_paper_feed_does_not_invent_a_row_before_the_next_minute_closes(monkeypatch, tmp_path) -> None:

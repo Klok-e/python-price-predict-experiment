@@ -495,6 +495,7 @@ async def test_asgi_snapshot_restores_mixed_long_short_positions_and_signed_fund
             "market_feed",
             "policy",
             "fitting",
+            "last_policy_handoff",
             "compute",
             "operating_windows",
             "notifications",
@@ -1593,11 +1594,191 @@ async def test_weekly_fitting_runs_in_background_and_hands_off_without_reset(tmp
     assert paper.state.model_id == "model-2"
     assert paper.state.model_checkpoint == str(fitter.checkpoint)
     assert paper.state.fitting["status"] == "idle"
+    assert paper.state.fitting["due_at"] == clock.current.isoformat()
+    assert paper.state.fitting["started_at"] == clock.current.isoformat()
+    assert paper.state.fitting["completed_at"] == clock.current.isoformat()
     assert [candidate.model_id for candidate in fitter.activated] == ["model-2"]
     assert {event.event_type for event in paper.store.events(account_id)} >= {
         "PolicyFittingStarted",
         "PolicyHandoff",
     }
+    system = paper.system_snapshot()
+    assert system["policy"]["model_checkpoint"] == str(fitter.checkpoint)
+    assert system["last_policy_handoff"] == {
+        "old_model_id": "unknown",
+        "new_model_id": "model-2",
+        "checkpoint": str(fitter.checkpoint),
+        "protocol_id": "unknown",
+        "due_at": clock.current.isoformat(),
+        "started_at": clock.current.isoformat(),
+        "completed_at": clock.current.isoformat(),
+    }
+    paper.close()
+
+
+@pytest.mark.anyio
+async def test_paused_account_starts_due_policy_fitting_on_the_next_operating_window(tmp_path) -> None:
+    clock = FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC))
+    fitter = FakeFitter(tmp_path / "model-2.pt")
+    app = create_application(
+        database_path=tmp_path / "paper.sqlite3",
+        tickers=TICKERS,
+        clock=clock,
+        market_feed=FakeFeed([]),
+        policy_backend=FakePolicy([]),
+        notifications=NotificationRecorder(),
+        policy_fitter=fitter,
+    )
+    paper = app.state.paper_dashboard
+    await paper.advance_once(observation(1))
+    paper.control(
+        "pause",
+        expected_version=paper.state.state_version,
+        idempotency_key="pause-before-fit",
+    )
+
+    await paper.maybe_start_policy_fitting()
+    assert paper._fitting_task is not None
+    await paper._fitting_task
+
+    assert paper.state.lifecycle.value == "Paused"
+    assert paper.state.model_id == "model-2"
+    assert paper.state.fitting["status"] == "idle"
+    paper.close()
+
+
+@pytest.mark.anyio
+async def test_policy_activation_and_durable_handoff_are_one_serialized_boundary(tmp_path) -> None:
+    activated = threading.Event()
+    release_activation = threading.Event()
+    competing_advance_completed = threading.Event()
+    completed_before_handoff: list[bool] = []
+    advance_errors: list[BaseException] = []
+
+    @dataclass
+    class SwitchingPolicy:
+        model_id: str = "model-1"
+
+        def decide(self, observed: MarketObservation, current_weights: dict[str, float]) -> PolicyDecision:
+            del current_weights
+            target = dict.fromkeys(TICKERS, 0.0)
+            return PolicyDecision(target, target, self.model_id, observed.input_id, "protocol-1")
+
+    @dataclass
+    class BlockingActivationFitter(FakeFitter):
+        policy: SwitchingPolicy = field(default_factory=SwitchingPolicy)
+
+        def activate(self, candidate: FittedPolicyCandidate):
+            previous = self.policy.model_id
+            self.policy.model_id = candidate.model_id
+            activated.set()
+            assert release_activation.wait(timeout=1.0)
+
+            def rollback() -> None:
+                self.policy.model_id = previous
+
+            return rollback
+
+    policy = SwitchingPolicy()
+    fitter = BlockingActivationFitter(tmp_path / "model-2.pt", policy=policy)
+    app = create_application(
+        database_path=tmp_path / "paper.sqlite3",
+        tickers=TICKERS,
+        clock=FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC)),
+        market_feed=FakeFeed([]),
+        policy_backend=policy,
+        notifications=NotificationRecorder(),
+        policy_fitter=fitter,
+    )
+    paper = app.state.paper_dashboard
+    paper.register_policy_revision(
+        protocol_id="protocol-1",
+        compatibility=load_config("policy.toml").compatibility_manifest,
+    )
+    paper.register_initial_fitted_policy(model_id="model-1", checkpoint="/models/model-1.pt")
+    await paper.advance_once(observation(1))
+
+    def competing_advance() -> None:
+        assert activated.wait(timeout=1.0)
+        try:
+            paper.advance_once_sync(observation(15, decision=True))
+        except BaseException as error:
+            advance_errors.append(error)
+        finally:
+            competing_advance_completed.set()
+
+    def release_after_probe() -> None:
+        assert activated.wait(timeout=1.0)
+        time.sleep(0.1)
+        completed_before_handoff.append(competing_advance_completed.is_set())
+        release_activation.set()
+
+    advance_thread = threading.Thread(target=competing_advance)
+    probe = threading.Thread(target=release_after_probe)
+    advance_thread.start()
+    probe.start()
+    await paper.maybe_start_policy_fitting()
+    assert paper._fitting_task is not None
+    await paper._fitting_task
+    advance_thread.join(timeout=1.0)
+    probe.join(timeout=1.0)
+
+    events = paper.store.events()
+    paper.close()
+    assert completed_before_handoff == [False]
+    assert advance_errors == []
+    assert paper.state.model_id == "model-2"
+    handoff, decision = [event for event in events if event.event_type in {"PolicyHandoff", "DecisionRecord"}]
+    assert handoff.sequence < decision.sequence
+    assert decision.payload["model_id"] == "model-2"
+
+
+@pytest.mark.anyio
+async def test_observations_decisions_and_controls_continue_while_fitting_runs(tmp_path) -> None:
+    fitting_started = threading.Event()
+    fitting_release = threading.Event()
+
+    class BlockingFitter(FakeFitter):
+        def fit(self, observed_at: datetime, current_weights: dict[str, float]) -> FittedPolicyCandidate:
+            fitting_started.set()
+            assert fitting_release.wait(timeout=1.0)
+            return super().fit(observed_at, current_weights)
+
+    app = create_application(
+        database_path=tmp_path / "paper.sqlite3",
+        tickers=TICKERS,
+        clock=FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC)),
+        market_feed=FakeFeed([]),
+        policy_backend=FakePolicy([dict.fromkeys(TICKERS, 0.0)]),
+        notifications=NotificationRecorder(),
+        policy_fitter=BlockingFitter(tmp_path / "model-2.pt"),
+    )
+    paper = app.state.paper_dashboard
+    paper.register_policy_revision(
+        protocol_id="protocol-1",
+        compatibility=load_config("policy.toml").compatibility_manifest,
+    )
+    paper.register_initial_fitted_policy(model_id="model-1", checkpoint="/models/model-1.pt")
+    await paper.advance_once(observation(1))
+    await paper.maybe_start_policy_fitting()
+    assert await asyncio.to_thread(fitting_started.wait, 1.0)
+
+    await paper.advance_once(observation(15, decision=True))
+    decision = next(event for event in reversed(paper.store.events()) if event.event_type == "DecisionRecord")
+    paper.control(
+        "pause",
+        expected_version=paper.state.state_version,
+        idempotency_key="pause-during-fit",
+    )
+
+    assert decision.payload["model_id"] == "model-1"
+    assert paper.state.last_observation_at == observation(15).timestamp
+    assert paper.state.lifecycle.value == "Paused"
+    fitting_release.set()
+    assert paper._fitting_task is not None
+    await paper._fitting_task
+    assert paper.state.model_id == "model-2"
+    assert paper.state.lifecycle.value == "Paused"
     paper.close()
 
 
@@ -1609,27 +1790,81 @@ async def test_failed_policy_activation_never_advances_the_durable_model(tmp_pat
             raise RuntimeError("candidate cannot be activated")
 
     fitter = Fitter(tmp_path / "invalid.pt")
+    notifications = NotificationRecorder()
     app = create_application(
         database_path=tmp_path / "paper.sqlite3",
         tickers=TICKERS,
         clock=FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC)),
         market_feed=FakeFeed([]),
         policy_backend=FakePolicy([]),
-        notifications=NotificationRecorder(),
+        notifications=notifications,
         policy_fitter=fitter,
     )
     paper = app.state.paper_dashboard
     await paper.advance_once(observation(1))
     old_model_id = paper.state.model_id
+    account_id = paper.state.account_id
+    quantities = paper.state.simulation.quantities.copy()
     await paper.maybe_start_policy_fitting()
     assert paper._fitting_task is not None
     await paper._fitting_task
 
     assert paper.state.model_id == old_model_id
+    assert paper.state.account_id == account_id
+    assert paper.state.simulation.quantities == quantities
     assert paper.state.fitting["status"] == "failed"
     assert "candidate cannot be activated" in paper.state.fitting["error"]
+    assert paper.state.fitting["due_at"] == datetime(2026, 8, 23, 18, 0, tzinfo=UTC).isoformat()
+    assert paper.state.fitting["started_at"] == datetime(2026, 8, 23, 18, 0, tzinfo=UTC).isoformat()
+    assert notifications.calls[-1][0] == "fitting_failure"
     assert "PolicyHandoff" not in {event.event_type for event in paper.store.events()}
     paper.close()
+
+
+@pytest.mark.anyio
+async def test_interrupted_fitting_is_durably_failed_without_changing_account_or_model(tmp_path) -> None:
+    database = tmp_path / "paper.sqlite3"
+    clock = FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC))
+    first = create_application(
+        database_path=database,
+        tickers=TICKERS,
+        clock=clock,
+        market_feed=FakeFeed([]),
+        policy_backend=FakePolicy([]),
+        notifications=NotificationRecorder(),
+        policy_fitter=FakeFitter(tmp_path / "model-2.pt"),
+    ).state.paper_dashboard
+    first.register_policy_revision(
+        protocol_id="protocol-1",
+        compatibility=load_config("policy.toml").compatibility_manifest,
+    )
+    first.register_initial_fitted_policy(model_id="model-1", checkpoint="/models/model-1.pt")
+    await first.advance_once(observation(1))
+    first.start_policy_fitting(due_at=clock.current)
+    account_id = first.state.account_id
+    first.close()
+
+    clock.current += timedelta(minutes=1)
+    notifications = NotificationRecorder()
+    reopened = create_application(
+        database_path=database,
+        tickers=TICKERS,
+        clock=clock,
+        market_feed=FakeFeed([]),
+        policy_backend=FakePolicy([]),
+        notifications=notifications,
+        policy_fitter=FakeFitter(tmp_path / "model-2.pt"),
+    ).state.paper_dashboard
+    await reopened.maybe_start_policy_fitting()
+
+    assert reopened.state.account_id == account_id
+    assert reopened.state.model_id == "model-1"
+    assert reopened.state.fitting["status"] == "failed"
+    assert reopened.state.fitting["due_at"] == datetime(2026, 8, 23, 18, 0, tzinfo=UTC).isoformat()
+    assert reopened.state.fitting["started_at"] == datetime(2026, 8, 23, 18, 0, tzinfo=UTC).isoformat()
+    assert "interrupted before Policy Handoff" in reopened.state.fitting["error"]
+    assert notifications.calls[-1][0] == "fitting_failure"
+    reopened.close()
 
 
 def test_production_schedule_runs_once_on_the_first_window_after_sunday_deadline() -> None:
@@ -1642,10 +1877,67 @@ def test_production_schedule_runs_once_on_the_first_window_after_sunday_deadline
         sunday,
         {"status": "idle", "completed_at": datetime(2026, 8, 23, 0, 1, tzinfo=UTC).isoformat()},
     )
+    assert not backend.is_due(
+        sunday,
+        {
+            "status": "failed",
+            "due_at": sunday.isoformat(),
+            "failed_at": (sunday + timedelta(minutes=1)).isoformat(),
+        },
+    )
     assert backend.is_due(
         sunday + timedelta(days=7),
         {"status": "idle", "completed_at": datetime(2026, 8, 23, 0, 1, tzinfo=UTC).isoformat()},
     )
+    assert backend.is_due(
+        sunday + timedelta(days=7),
+        {
+            "status": "failed",
+            "due_at": sunday.isoformat(),
+            "failed_at": (sunday + timedelta(minutes=1)).isoformat(),
+        },
+    )
+
+
+def test_scheduled_fitting_persists_a_content_addressed_immutable_checkpoint(tmp_path) -> None:
+    candidate_bytes = b"scheduled-fitted-policy"
+
+    class Adapter:
+        def load(self) -> object:
+            return object()
+
+    class Backend:
+        def paper(self, *args: Any, **kwargs: Any) -> SimpleNamespace:
+            del args, kwargs
+            return SimpleNamespace(
+                refitted=True,
+                model_bytes=candidate_bytes,
+                target_weights=dict.fromkeys(TICKERS, 0.0),
+            )
+
+    backend = ProductionPolicyBackend(
+        adapter=Adapter(),  # type: ignore[arg-type]
+        backend=Backend(),  # type: ignore[arg-type]
+        fitting_adapter=Adapter(),  # type: ignore[arg-type]
+        attribution_adapter=Adapter(),  # type: ignore[arg-type]
+        fitting_backend=Backend(),  # type: ignore[arg-type]
+        checkpoint_directory=tmp_path,
+        config=load_config("policy.toml"),
+        device="cpu",
+        fitted_model=b"current-policy",
+    )
+
+    first = backend.fit(observation(1).timestamp, dict.fromkeys(TICKERS, 0.0))
+    repeated = backend.fit(observation(1).timestamp, dict.fromkeys(TICKERS, 0.0))
+    checkpoint = Path(first.checkpoint)
+
+    assert first.model_id == hashlib.sha256(candidate_bytes).hexdigest()
+    assert checkpoint.name == f"{first.model_id}.pt"
+    assert checkpoint.read_bytes() == candidate_bytes
+    assert repeated == first
+    checkpoint.write_bytes(b"tampered")
+    with pytest.raises(RuntimeError, match="immutable Fitted Policy checkpoint hash collision"):
+        backend.fit(observation(1).timestamp, dict.fromkeys(TICKERS, 0.0))
 
 
 def test_production_market_feed_uses_the_low_latency_mark_path(monkeypatch) -> None:
@@ -1670,17 +1962,15 @@ def test_compatible_policy_revisions_segment_history_metrics(tmp_path) -> None:
     clock = FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC))
     app = make_app(tmp_path / "paper.sqlite3", clock, FakeFeed([]), FakePolicy([]))
     paper = app.state.paper_dashboard
-    compatibility = {"trading_universe": list(TICKERS), "account_currency": "USD"}
+    compatibility = load_config("policy.toml").compatibility_manifest
     paper.register_policy_revision(
         protocol_id="protocol-1",
-        compatible=True,
         compatibility=compatibility,
     )
     paper.advance_once_sync(observation(1))
     clock.current += timedelta(minutes=2)
     paper.register_policy_revision(
         protocol_id="protocol-2",
-        compatible=True,
         compatibility=compatibility,
     )
     paper.advance_once_sync(observation(2))
@@ -1696,6 +1986,321 @@ def test_compatible_policy_revisions_segment_history_metrics(tmp_path) -> None:
     assert history["protocol_segments"][0]["ended_at"] == clock.current.isoformat()
     assert all(segment["compounded_net_return"] == 0.0 for segment in history["protocol_segments"])
     paper.close()
+
+
+def test_compatible_policy_revision_segments_nonzero_account_performance(tmp_path) -> None:
+    clock = FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC))
+    target = {**dict.fromkeys(TICKERS, 0.0), "BTCUSDT": 0.5}
+    app = make_app(tmp_path / "paper.sqlite3", clock, FakeFeed([]), FakePolicy([target]))
+    paper = app.state.paper_dashboard
+    compatibility = load_config("policy.toml").compatibility_manifest
+    paper.register_policy_revision(protocol_id="protocol-1", compatibility=compatibility)
+    paper.register_initial_fitted_policy(model_id="model-1", checkpoint="/models/model-1.pt")
+    paper.advance_once_sync(observation(0, decision=True))
+    paper.advance_once_sync(observation(1))
+    higher = dict.fromkeys(TICKERS, 100.0)
+    higher["BTCUSDT"] = 120.0
+    paper.advance_once_sync(replace(observation(2), mark_prices=higher))
+    clock.current = observation(2).timestamp
+    paper.register_policy_revision(
+        protocol_id="protocol-2",
+        compatibility=compatibility,
+        model_compatibility={
+            "model_id": "model-1",
+            "method": "production-inference-preflight",
+            "checked_at": clock.current.isoformat(),
+        },
+    )
+    lower = dict.fromkeys(TICKERS, 100.0)
+    lower["BTCUSDT"] = 80.0
+    paper.advance_once_sync(replace(observation(3), mark_prices=lower))
+
+    first, second = paper.history_snapshot()["protocol_segments"]
+
+    assert first["protocol_id"] == "protocol-1"
+    assert first["compounded_net_return"] > 0.0
+    assert first["decisions"] == 1
+    assert first["executable_changes"] == 1
+    assert second["protocol_id"] == "protocol-2"
+    assert second["compounded_net_return"] < 0.0
+    assert second["starting_equity"] == first["current_equity"]
+    paper.close()
+
+
+def test_compatible_revision_requires_and_records_model_compatibility_evidence(tmp_path) -> None:
+    clock = FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC))
+    app = make_app(tmp_path / "paper.sqlite3", clock, FakeFeed([]), FakePolicy([]))
+    paper = app.state.paper_dashboard
+    compatibility = load_config("policy.toml").compatibility_manifest
+    paper.register_policy_revision(protocol_id="protocol-1", compatibility=compatibility)
+    paper.register_initial_fitted_policy(model_id="model-1", checkpoint="/models/model-1.pt")
+
+    with pytest.raises(RuntimeError, match="compatibility evidence"):
+        paper.register_policy_revision(protocol_id="protocol-2", compatibility=compatibility)
+
+    evidence = {
+        "model_id": "model-1",
+        "method": "production-inference-preflight",
+        "checked_at": clock.current.isoformat(),
+    }
+    paper.register_policy_revision(
+        protocol_id="protocol-2",
+        compatibility=compatibility,
+        model_compatibility=evidence,
+    )
+
+    revision = next(event for event in reversed(paper.store.events()) if event.event_type == "PolicyRevision")
+    assert revision.payload["model_compatibility"] == evidence
+    assert paper.state.model_id == "model-1"
+    assert paper.state.model_checkpoint == "/models/model-1.pt"
+    paper.close()
+
+
+def test_compatible_revision_and_replacement_policy_commit_as_one_boundary(tmp_path) -> None:
+    @dataclass
+    class SwitchingFitter(FakeFitter):
+        active_model_id: str = "model-1"
+
+        def activate(self, candidate: FittedPolicyCandidate):
+            previous = self.active_model_id
+            self.active_model_id = candidate.model_id
+
+            def rollback() -> None:
+                self.active_model_id = previous
+
+            return rollback
+
+    compatibility = load_config("policy.toml").compatibility_manifest
+    fitter = SwitchingFitter(tmp_path / "model-2.pt")
+    app = create_application(
+        database_path=tmp_path / "paper.sqlite3",
+        tickers=TICKERS,
+        clock=FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC)),
+        market_feed=FakeFeed([]),
+        policy_backend=FakePolicy([]),
+        notifications=NotificationRecorder(),
+        policy_fitter=fitter,
+    )
+    paper = app.state.paper_dashboard
+    paper.register_policy_revision(protocol_id="protocol-1", compatibility=compatibility)
+    paper.register_initial_fitted_policy(model_id="model-1", checkpoint="/models/model-1.pt")
+    account_id = paper.state.account_id
+    before_version = paper.state.state_version
+
+    paper.register_policy_revision(
+        protocol_id="protocol-2",
+        compatibility=compatibility,
+        fitted_policy=FittedPolicyCandidate("model-2", str(fitter.checkpoint), b"model-2"),
+    )
+
+    assert paper.state.account_id == account_id
+    assert paper.state.state_version == before_version + 1
+    assert paper.state.protocol_id == "protocol-2"
+    assert paper.state.model_id == "model-2"
+    assert paper.state.model_checkpoint == str(fitter.checkpoint)
+    assert paper.state.fitting == {"status": "idle"}
+    assert fitter.active_model_id == "model-2"
+    boundary = [
+        event.event_type for event in paper.store.events() if event.event_type in {"PolicyRevision", "PolicyHandoff"}
+    ]
+    assert boundary[-2:] == ["PolicyRevision", "PolicyHandoff"]
+    paper.close()
+
+
+def test_failed_revision_commit_rolls_back_the_replacement_policy(tmp_path, monkeypatch) -> None:
+    @dataclass
+    class SwitchingFitter(FakeFitter):
+        active_model_id: str = "model-1"
+
+        def activate(self, candidate: FittedPolicyCandidate):
+            previous = self.active_model_id
+            self.active_model_id = candidate.model_id
+
+            def rollback() -> None:
+                self.active_model_id = previous
+
+            return rollback
+
+    compatibility = load_config("policy.toml").compatibility_manifest
+    fitter = SwitchingFitter(tmp_path / "model-2.pt")
+    app = create_application(
+        database_path=tmp_path / "paper.sqlite3",
+        tickers=TICKERS,
+        clock=FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC)),
+        notifications=NotificationRecorder(),
+        policy_fitter=fitter,
+    )
+    paper = app.state.paper_dashboard
+    paper.register_policy_revision(protocol_id="protocol-1", compatibility=compatibility)
+    paper.register_initial_fitted_policy(model_id="model-1", checkpoint="/models/model-1.pt")
+    committed = paper.store.commit
+
+    def fail_revision_commit(*args: Any, **kwargs: Any):
+        events = list(args[1])
+        if any(event[0] == "PolicyRevision" for event in events):
+            raise RuntimeError("simulated SQLite commit failure")
+        return committed(args[0], events, *args[2:], **kwargs)
+
+    monkeypatch.setattr(paper.store, "commit", fail_revision_commit)
+    with pytest.raises(RuntimeError, match="simulated SQLite commit failure"):
+        paper.register_policy_revision(
+            protocol_id="protocol-2",
+            compatibility=compatibility,
+            fitted_policy=FittedPolicyCandidate("model-2", str(fitter.checkpoint), b"model-2"),
+        )
+
+    assert fitter.active_model_id == "model-1"
+    assert paper.state.protocol_id == "protocol-1"
+    assert paper.state.model_id == "model-1"
+    assert paper.state.model_checkpoint == "/models/model-1.pt"
+    paper.close()
+
+
+@pytest.mark.parametrize(
+    ("dimension", "replacement"),
+    [
+        ("trading_universe", ["BTCUSDT"]),
+        ("account_currency", "EUR"),
+        ("position_semantics", "spot-only-v1"),
+        ("execution_semantics", "instant-fill-v1"),
+        ("risk_semantics", "leveraged-v1"),
+    ],
+)
+def test_incompatible_policy_revision_enters_durable_migration_required(
+    tmp_path, dimension: str, replacement: object
+) -> None:
+    clock = FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC))
+    notifications = NotificationRecorder()
+    app = create_application(
+        database_path=tmp_path / "paper.sqlite3",
+        tickers=TICKERS,
+        clock=clock,
+        market_feed=FakeFeed([]),
+        policy_backend=FakePolicy([]),
+        notifications=notifications,
+    )
+    paper = app.state.paper_dashboard
+    compatibility = load_config("policy.toml").compatibility_manifest
+    paper.register_policy_revision(protocol_id="protocol-1", compatibility=compatibility)
+    account_id = paper.state.account_id
+    proposed = {**compatibility, dimension: replacement}
+
+    paper.register_policy_revision(protocol_id="protocol-2", compatibility=proposed)
+    paper.register_policy_revision(protocol_id="protocol-2", compatibility=proposed)
+
+    assert paper.state.lifecycle.value == "Migration Required"
+    assert paper.state.account_id == account_id
+    assert paper.state.protocol_id == "protocol-1"
+    assert paper.state.proposed_protocol_id == "protocol-2"
+    assert paper.state.proposed_compatibility_manifest == proposed
+    assert [event.event_type for event in paper.store.events()].count("MigrationRequired") == 1
+    assert [kind for kind, _payload in notifications.calls] == ["incompatible_policy_revision"]
+    paper.close()
+
+
+def test_incompatible_revision_completes_a_pending_decision_as_cancelled(tmp_path) -> None:
+    clock = FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC))
+    target = {**dict.fromkeys(TICKERS, 0.0), "BTCUSDT": 0.5}
+    app = make_app(tmp_path / "paper.sqlite3", clock, FakeFeed([]), FakePolicy([target]))
+    paper = app.state.paper_dashboard
+    compatibility = load_config("policy.toml").compatibility_manifest
+    paper.register_policy_revision(protocol_id="protocol-1", compatibility=compatibility)
+    paper.register_initial_fitted_policy(model_id="model-1", checkpoint="/models/model-1.pt")
+    paper.advance_once_sync(observation(0, decision=True))
+    decision = next(event for event in paper.store.events() if event.event_type == "DecisionRecord")
+
+    proposed = {**compatibility, "risk_semantics": "leveraged-v1"}
+    paper.register_policy_revision(protocol_id="protocol-2", compatibility=proposed)
+
+    assert paper.state.pending_execution is None
+    assert paper.state.simulation.pending is None
+    detail = paper.event_snapshot(decision.event_id)
+    assert detail["decision"]["outcome"] == "cancelled_by_policy_revision"
+    assert any(
+        event.event_type == "DecisionCompleted"
+        and event.decision_id == decision.decision_id
+        and event.payload["outcome"] == "cancelled_by_policy_revision"
+        for event in paper.store.events()
+    )
+    paper.close()
+
+
+def test_trading_universe_revision_reopens_existing_account_for_migration_gate(tmp_path) -> None:
+    database = tmp_path / "paper.sqlite3"
+    now = datetime(2026, 8, 23, 18, 0, tzinfo=UTC)
+    first = create_application(
+        database_path=database,
+        tickers=TICKERS,
+        clock=FakeClock(now),
+        notifications=NotificationRecorder(),
+    ).state.paper_dashboard
+    compatibility = load_config("policy.toml").compatibility_manifest
+    first.register_policy_revision(protocol_id="protocol-1", compatibility=compatibility)
+    account_id = first.state.account_id
+    first.close()
+
+    proposed_tickers = ("BTCUSDT",)
+    reopened = create_application(
+        database_path=database,
+        tickers=proposed_tickers,
+        clock=FakeClock(now + timedelta(minutes=1)),
+        notifications=NotificationRecorder(),
+    ).state.paper_dashboard
+    proposed = {**compatibility, "trading_universe": list(proposed_tickers)}
+    reopened.register_policy_revision(protocol_id="protocol-2", compatibility=proposed)
+
+    assert reopened.state.account_id == account_id
+    assert reopened.state.tickers == TICKERS
+    assert reopened.state.lifecycle.value == "Migration Required"
+    reopened.close()
+
+
+def test_migration_required_preserves_positions_and_blocks_decisions_across_restart(tmp_path) -> None:
+    database = tmp_path / "paper.sqlite3"
+    clock = FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC))
+    target = {**dict.fromkeys(TICKERS, 0.0), "BTCUSDT": 0.5}
+    first = create_application(
+        database_path=database,
+        tickers=TICKERS,
+        clock=clock,
+        market_feed=FakeFeed([]),
+        policy_backend=FakePolicy([target, target]),
+        notifications=NotificationRecorder(),
+    ).state.paper_dashboard
+    compatibility = load_config("policy.toml").compatibility_manifest
+    first.register_policy_revision(protocol_id="protocol-1", compatibility=compatibility)
+    first.register_initial_fitted_policy(model_id="model-1", checkpoint="/models/model-1.pt")
+    first.advance_once_sync(observation(0, decision=True))
+    first.advance_once_sync(observation(1))
+    account_id = first.state.account_id
+    quantities = first.state.simulation.quantities.copy()
+    proposed = {**compatibility, "risk_semantics": "leveraged-v1"}
+    first.register_policy_revision(protocol_id="protocol-2", compatibility=proposed)
+    first.advance_once_sync(observation(15, decision=True))
+    assert [event.event_type for event in first.store.events()].count("DecisionRecord") == 1
+    clock.current = observation(15).timestamp
+    first.close()
+
+    clock.current += timedelta(minutes=1)
+    reopened = create_application(
+        database_path=database,
+        tickers=TICKERS,
+        clock=clock,
+        market_feed=FakeFeed([]),
+        policy_backend=FakePolicy([target]),
+        notifications=NotificationRecorder(),
+    ).state.paper_dashboard
+    reopened.register_policy_revision(protocol_id="protocol-2", compatibility=proposed)
+    reopened.advance_once_sync(observation(30, decision=True))
+
+    assert reopened.state.account_id == account_id
+    assert reopened.state.simulation.quantities == quantities
+    assert reopened.state.lifecycle.value == "Migration Required"
+    assert reopened.state.model_id == "model-1"
+    assert reopened.state.protocol_id == "protocol-1"
+    assert [event.event_type for event in reopened.store.events()].count("MigrationRequired") == 1
+    assert [event.event_type for event in reopened.store.events()].count("DecisionRecord") == 1
+    reopened.close()
 
 
 def test_initial_fitted_policy_selection_does_not_count_as_a_completed_weekly_fit(tmp_path) -> None:
@@ -1714,6 +2319,27 @@ def test_initial_fitted_policy_selection_does_not_count_as_a_completed_weekly_fi
     assert paper.state.fitting == {"status": "idle"}
     assert [event.event_type for event in paper.store.events()].count("FittedPolicySelected") == 1
     assert "PolicyHandoff" not in {event.event_type for event in paper.store.events()}
+    paper.close()
+
+
+def test_decision_cannot_replace_the_durable_fitted_policy_or_protocol(tmp_path) -> None:
+    app = make_app(
+        tmp_path / "paper.sqlite3",
+        FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC)),
+        FakeFeed([]),
+        FakePolicy([dict.fromkeys(TICKERS, 0.0)]),
+    )
+    paper = app.state.paper_dashboard
+    compatibility = load_config("policy.toml").compatibility_manifest
+    paper.register_policy_revision(protocol_id="protocol-durable", compatibility=compatibility)
+    paper.register_initial_fitted_policy(model_id="model-durable", checkpoint="/models/durable.pt")
+
+    with pytest.raises(RuntimeError, match="durable Fitted Policy"):
+        paper.advance_once_sync(observation(0, decision=True))
+
+    assert paper.state.model_id == "model-durable"
+    assert paper.state.protocol_id == "protocol-durable"
+    assert "DecisionRecord" not in {event.event_type for event in paper.store.events()}
     paper.close()
 
 
@@ -1805,8 +2431,44 @@ def test_production_decision_identity_hashes_exact_market_state_and_current_port
     ).hexdigest()
 
     assert decision.input_id == expected
+    assert decision.protocol_id == config.protocol_id
     changed = backend.decide(observation(0, decision=True), {**current, "BTCUSDT": 0.99})
     assert changed.input_id != decision.input_id
+
+
+def test_production_decision_rejects_implicit_refitting(tmp_path) -> None:
+    canonical = canonical_policy_input(periods=3)
+
+    class Adapter:
+        def load(self) -> CanonicalDataset:
+            return canonical
+
+    class Backend:
+        def paper(self, *args: Any, **kwargs: Any) -> SimpleNamespace:
+            del args, kwargs
+            return SimpleNamespace(
+                refitted=True,
+                model_bytes=b"replacement-policy",
+                target_weights=dict.fromkeys(TICKERS, 0.0),
+            )
+
+    selected = b"selected-policy"
+    backend = ProductionPolicyBackend(
+        adapter=Adapter(),
+        backend=Backend(),
+        fitting_adapter=Adapter(),
+        attribution_adapter=Adapter(),
+        fitting_backend=Backend(),
+        checkpoint_directory=tmp_path,
+        config=load_config("policy.toml"),
+        device="cpu",
+        fitted_model=selected,
+    )
+
+    with pytest.raises(RuntimeError, match="ordinary decision must not replace"):
+        backend.decide(observation(0, decision=True), dict.fromkeys(TICKERS, 0.0))
+
+    assert backend.fitted_model == selected
 
 
 def test_restarted_attribution_rejects_changed_canonical_market_state(tmp_path) -> None:

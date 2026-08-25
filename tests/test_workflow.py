@@ -112,6 +112,7 @@ def test_dashboard_and_dependency_files_do_not_change_policy_revision(tmp_path, 
     protocol = workflow.protocol_hash
 
     assert workflow.protocol_hash == protocol
+    assert protocol == workflow.config.protocol_id
     assert {path.name for path in read_paths} == {
         "config.py",
         "market_data.py",
