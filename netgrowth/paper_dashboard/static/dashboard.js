@@ -626,12 +626,16 @@
       definitionList({
         event_id: first(event.id, event.event_id),
         ticker: first(event.ticker, event.symbol),
-        Kyiv_time: formatDateTime(first(event.time, event.timestamp, event.at), { full: true, seconds: true, zone: true }),
-        UTC_time: formatDateTime(first(event.time, event.timestamp, event.at), { utc: true, full: true, seconds: true, zone: true }),
+        Kyiv: formatDateTime(first(event.time, event.timestamp, event.at), { full: true, seconds: true, zone: true }),
+        UTC: formatDateTime(first(event.time, event.timestamp, event.at), { utc: true, full: true, seconds: true, zone: true }),
         decision_id: event.decision_id,
       }),
     ]);
     const sections = [header];
+    const details = first(event.details, event.payload);
+    if (details && Object.keys(details).length && first(event.type, event.event_type) !== "DecisionRecord") {
+      sections.push(eventDetailSection("Event facts", [definitionList(details)]));
+    }
     const decision = first(event.decision, event.decision_record);
     if (decision) {
       sections.push(eventDetailSection("Decision record", [
@@ -666,7 +670,7 @@
     const label = first(attribution.label, "Approximate post-hoc influence evidence");
     const influences = asArray(first(attribution.top_influences, attribution.influences));
     const influenceList = element("ol", { className: "influence-list" }, influences.map((influence) => element("li", {}, [
-      element("span", { text: first(influence.feature, influence.name, influence.group, "Influence") }),
+      element("span", { text: first(influence.label, influence.feature, influence.name, influence.group, "Influence") }),
       element("strong", { text: formatNumber(first(influence.value, influence.attribution, influence.score), 5) }),
     ])));
     return eventDetailSection("Model attribution", [

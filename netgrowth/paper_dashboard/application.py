@@ -18,6 +18,7 @@ from pathlib import Path
 from threading import RLock
 from typing import Any, Protocol, cast
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
@@ -46,6 +47,8 @@ from .domain import (
 from .persistence import SQLitePaperStore, StateVersionConflict
 
 DEFAULT_TICKERS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT")
+KYIV_TIME_ZONE = ZoneInfo("Europe/Kiev")
+CHART_ONLY_EVENT_TYPES = frozenset({"AccountMarked", "AccountMarkReconstructed"})
 
 
 class MarketFeed(Protocol):
@@ -430,6 +433,8 @@ class PaperDashboardApplication:
                         "cash_benchmark": benchmark_mark.cash_equity,
                         "equal_weight_benchmark": benchmark_mark.equal_weight_equity,
                         "net_exposure": account_snapshot.risk.net_exposure,
+                        "current_weights": account_snapshot.risk.instrument_weights,
+                        "target_weights": self.state.target_weights,
                     },
                     None,
                     None,
@@ -583,6 +588,7 @@ class PaperDashboardApplication:
                             "input_id": decision.input_id,
                             "current_portfolio": current_weights,
                             "raw_target_weights": decision.raw_target_weights,
+                            "constrained_target_weights": decision.target_weights,
                             "target_weights": decision.target_weights,
                             "projected_turnover": projected_turnover,
                             "threshold": self.config.minimum_turnover,
@@ -1080,6 +1086,7 @@ class PaperDashboardApplication:
             else:
                 account_snapshot = None
             events = self.store.events(state.account_id)
+            material_events = [event for event in events if event.event_type not in CHART_ONLY_EVENT_TYPES]
             activity = self._activity(events)
             positions = (
                 [
@@ -1177,7 +1184,7 @@ class PaperDashboardApplication:
                         "estimated_cost": estimated_flatten_cost,
                     },
                 },
-                "recent_events": [self._event_summary(event) for event in reversed(events[-20:])],
+                "recent_events": [self._event_summary(event) for event in reversed(material_events[-20:])],
             }
 
     def history_snapshot(self, account_id: str | None = None) -> dict[str, Any]:
@@ -1228,7 +1235,11 @@ class PaperDashboardApplication:
         return {
             "accounts": account_rows,
             "selected_account_id": selected,
-            "events": [self._event_summary(event) for event in self.store.events(selected)],
+            "events": [
+                self._event_summary(event)
+                for event in self.store.events(selected)
+                if event.event_type not in CHART_ONLY_EVENT_TYPES
+            ],
             "protocol_segments": segments_by_account[selected],
             "comparison": {**selected_comparison, "accounts": comparisons},
         }
@@ -1340,6 +1351,16 @@ class PaperDashboardApplication:
                             "close": candle.get("close", mark),
                         }
                     )
+                current_weights = payload.get("current_weights", {})
+                target_weights = payload.get("target_weights", {})
+                if ticker in current_weights and ticker in target_weights:
+                    weights.append(
+                        {
+                            "time": event.occurred_at.isoformat(),
+                            "current": current_weights[ticker],
+                            "target": target_weights[ticker],
+                        }
+                    )
             elif event.event_type == "OperatingGap":
                 gaps.append({"start": payload["start"], "end": payload["end"]})
             if event.event_type == "DecisionRecord":
@@ -1352,14 +1373,19 @@ class PaperDashboardApplication:
                 "MissedExecution",
                 "FundingApplied",
                 "OperatorIntervention",
-            }:
+            } and (event.event_type != "InstrumentFilled" or event.ticker == ticker):
+                marker_price = event.payload.get("reference_price")
+                if event.event_type == "FundingApplied":
+                    marker_price = event.payload.get("mark_prices", {}).get(ticker)
+                marker_type = "Signal" if event.event_type == "DecisionRecord" else event.event_type
                 markers.append(
                     {
                         "id": event.event_id,
                         "time": event.occurred_at.isoformat(),
-                        "type": event.event_type,
-                        "label": _title(event.event_type),
-                        "price": event.payload.get("reference_price"),
+                        "type": marker_type,
+                        "label": _title(marker_type),
+                        "price": marker_price,
+                        "ticker": event.ticker,
                         "material": True,
                     }
                 )
@@ -1367,7 +1393,7 @@ class PaperDashboardApplication:
             "ticker": ticker,
             "range": range_name,
             "candles": _downsample(candles, pixels),
-            "weights": weights,
+            "weights": _downsample(weights, pixels),
             "portfolio": _downsample(portfolio, pixels),
             "gaps": gaps,
             "markers": markers,
@@ -1431,13 +1457,18 @@ class PaperDashboardApplication:
             elif completion is not None:
                 decision["outcome"] = completion.payload.get("outcome", "completed")
         attribution_event = next(
-            (item for item in related if item.event_type == "ModelAttribution"),
+            (item for item in related if item.event_type in {"ModelAttribution", "ModelAttributionFailed"}),
             None,
         )
-        attribution = (
-            attribution_event.payload
-            if attribution_event is not None
-            else (decision or {}).get(
+        if attribution_event is not None:
+            attribution = {
+                **attribution_event.payload,
+                "status": ("complete" if attribution_event.event_type == "ModelAttribution" else "failed"),
+                "label": "Approximate post-hoc influence evidence",
+                "event_id": attribution_event.event_id,
+            }
+        else:
+            attribution = (decision or {}).get(
                 "attribution",
                 {
                     "status": "not_applicable",
@@ -1445,7 +1476,6 @@ class PaperDashboardApplication:
                     "top_influences": [],
                 },
             )
-        )
         if attribution.get("status") == "pending":
             attribution = {
                 **attribution,
@@ -1459,6 +1489,7 @@ class PaperDashboardApplication:
             }
         return {
             **self._event_summary(event),
+            "details": event.payload,
             "decision": decision,
             "execution": execution,
             "attribution": attribution,
@@ -1594,7 +1625,11 @@ class PaperDashboardApplication:
         decisions = [event for event in events if event.event_type == "DecisionRecord"]
         return {
             "decisions": len(decisions),
-            "executable_changes": event_types.count("PortfolioChangeExecuted"),
+            "executable_changes": sum(
+                event.payload.get("kind") == "policy"
+                for event in events
+                if event.event_type == "PortfolioChangeExecuted"
+            ),
             "fills": event_types.count("InstrumentFilled"),
             "below_threshold": sum(
                 event.payload.get("outcome") == "below_threshold"
@@ -1660,7 +1695,7 @@ class PaperDashboardApplication:
                 )
             elif event.event_type == "DecisionRecord":
                 current["decisions"] = int(current["decisions"]) + 1
-            elif event.event_type == "PortfolioChangeExecuted":
+            elif event.event_type == "PortfolioChangeExecuted" and event.payload.get("kind") == "policy":
                 current["executable_changes"] = int(current["executable_changes"]) + 1
 
         if current is None:
@@ -1680,6 +1715,10 @@ class PaperDashboardApplication:
             "id": event.event_id,
             "type": event.event_type,
             "time": event.occurred_at.isoformat(),
+            "display_time": {
+                "kyiv": event.occurred_at.astimezone(KYIV_TIME_ZONE).isoformat(),
+                "utc": event.occurred_at.astimezone(UTC).isoformat(),
+            },
             "title": _title(event.event_type),
             "summary": summary,
             "ticker": event.ticker,
@@ -1971,6 +2010,7 @@ def _downsample(points: list[dict[str, Any]], pixels: int) -> list[dict[str, Any
 def _title(event_type: str) -> str:
     names = {
         "FlatStart": "Flat Start",
+        "Signal": "Policy signal",
         "AccountMarked": "Account mark",
         "AccountMarkReconstructed": "Reconstructed account mark",
         "DecisionRecord": "Decision Record",

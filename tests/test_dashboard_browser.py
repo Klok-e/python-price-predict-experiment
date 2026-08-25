@@ -224,7 +224,7 @@ class _DashboardHandler(BaseHTTPRequestHandler):
                     "attribution": {
                         "status": "Complete",
                         "label": "Approximate post-hoc influence evidence",
-                        "top_influences": [{"feature": "BTC momentum / recent", "value": 0.31}],
+                        "top_influences": [{"label": "BTC momentum / recent", "value": 0.31}],
                         "method": "Integrated Gradients",
                         "parameters": {"steps": 64},
                         "input_hash": "input-abc",
@@ -300,10 +300,15 @@ def test_dashboard_startup_navigation_marker_detail_and_control_wiring(
         playwright.expect(page.get_by_role("heading", name="Paper account")).to_be_visible()
         playwright.expect(page.get_by_text("$10,105.25", exact=True).first).to_be_visible()
 
-        page.get_by_role("button", name=re.compile(r"Signal.*BTC target increased")).click()
+        chart = page.locator("#financial-chart")
+        playwright.expect(
+            chart.get_by_role("img", name="BTCUSDT synchronized paper account financial chart")
+        ).to_be_visible()
+        chart.get_by_role("button", name=re.compile(r"Signal marker.*BTC target increased")).click()
         detail = page.get_by_role("dialog", name="Event detail")
         playwright.expect(detail.get_by_role("heading", name="Decision record")).to_be_visible()
         playwright.expect(detail.get_by_text("Approximate post-hoc influence evidence", exact=True)).to_be_visible()
+        playwright.expect(detail.get_by_text("BTC momentum / recent", exact=True)).to_be_visible()
         detail.get_by_role("button", name="Close event detail").click()
 
         page.get_by_role("tab", name="History").click()

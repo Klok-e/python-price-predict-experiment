@@ -246,6 +246,171 @@ async def test_complete_application_marks_decides_fills_and_restores_the_same_ac
 
 
 @pytest.mark.anyio
+async def test_filled_decision_detail_exposes_exact_targets_constraints_timing_and_costs(tmp_path) -> None:
+    class ConstrainedPolicy:
+        def decide(
+            self,
+            observed: MarketObservation,
+            current_weights: dict[str, float],
+        ) -> PolicyDecision:
+            del current_weights
+            raw = {**dict.fromkeys(TICKERS, 0.0), "BTCUSDT": 0.55}
+            constrained = {**dict.fromkeys(TICKERS, 0.0), "BTCUSDT": 0.5}
+            return PolicyDecision(
+                raw,
+                constrained,
+                "model-exact",
+                observed.input_id,
+                "protocol-exact",
+                ("BTCUSDT concentration capped at 0.50",),
+            )
+
+    app = create_application(
+        database_path=tmp_path / "paper.sqlite3",
+        tickers=TICKERS,
+        clock=FakeClock(datetime(2026, 8, 23, 18, 1, tzinfo=UTC)),
+        market_feed=FakeFeed([]),
+        policy_backend=ConstrainedPolicy(),
+        notifications=NotificationRecorder(),
+    )
+    paper = app.state.paper_dashboard
+    paper.advance_once_sync(observation(0, decision=True))
+    paper.advance_once_sync(observation(1))
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        chart = (await client.get("/api/chart", params={"ticker": "BTCUSDT"})).json()
+        signal = next(marker for marker in chart["markers"] if marker["type"] == "Signal")
+        detail = (await client.get(f"/api/events/{signal['id']}")).json()
+
+    decision = detail["decision"]
+    fill = detail["execution"]["fills"][0]
+    assert decision["signal_time"] == observation(0).timestamp.isoformat()
+    assert decision["model_id"] == "model-exact"
+    assert decision["input_id"] == "input-0"
+    assert decision["protocol_id"] == "protocol-exact"
+    assert decision["current_portfolio"] == dict.fromkeys(TICKERS, 0.0)
+    assert decision["raw_target_weights"]["BTCUSDT"] == pytest.approx(0.55)
+    assert decision["constrained_target_weights"]["BTCUSDT"] == pytest.approx(0.5)
+    assert decision["projected_turnover"] == pytest.approx(0.5)
+    assert decision["threshold_outcome"] == "executable"
+    assert decision["eligible_at"] == observation(1).timestamp.isoformat()
+    assert decision["expires_at"] == observation(3).timestamp.isoformat()
+    assert decision["constraints"] == ["BTCUSDT concentration capped at 0.50"]
+    assert decision["execution_time"] == observation(1).timestamp.isoformat()
+    assert decision["outcome"] == "PortfolioChangeExecuted"
+    assert detail["execution"]["transaction_cost"] > 0.0
+    assert fill["reference_price"] == 100.0
+    assert fill["effective_fill"] > fill["reference_price"]
+    assert fill["timestamp"] == observation(1).timestamp.isoformat()
+    paper.close()
+
+
+@pytest.mark.anyio
+async def test_selected_ticker_chart_retains_minute_weights_and_only_its_fill_markers(tmp_path) -> None:
+    target = {**dict.fromkeys(TICKERS, 0.0), "BTCUSDT": 0.5, "ETHUSDT": -0.25}
+    clock = FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC))
+    app = make_app(
+        tmp_path / "paper.sqlite3",
+        clock,
+        FakeFeed([]),
+        FakePolicy([target]),
+    )
+    paper = app.state.paper_dashboard
+    for offset in range(3):
+        observed = observation(offset, decision=offset == 0)
+        candles = {
+            ticker: {
+                "open": 99.0 + offset,
+                "high": 101.0 + offset,
+                "low": 98.0 + offset,
+                "close": 100.0 + offset,
+            }
+            for ticker in TICKERS
+        }
+        if offset == 2:
+            observed = replace(
+                observed,
+                funding_rates={"BTCUSDT": 0.001, "ETHUSDT": 0.001},
+                funding_mark_prices={"BTCUSDT": 102.0, "ETHUSDT": 102.0},
+            )
+        paper.advance_once_sync(replace(observed, mark_prices=dict.fromkeys(TICKERS, 100.0 + offset), candles=candles))
+    clock.current += timedelta(minutes=3)
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        full = (await client.get("/api/chart", params={"ticker": "BTCUSDT", "range": "full"})).json()
+        compressed = (
+            await client.get(
+                "/api/chart",
+                params={"ticker": "BTCUSDT", "range": "full", "pixels": 1},
+            )
+        ).json()
+        ranges = {
+            range_name: (
+                await client.get(
+                    "/api/chart",
+                    params={"ticker": "BTCUSDT", "range": range_name},
+                )
+            ).json()
+            for range_name in ("current", "24h", "7d", "full")
+        }
+
+    fill_markers = [marker for marker in full["markers"] if marker["type"] == "InstrumentFilled"]
+    funding_marker = next(marker for marker in full["markers"] if marker["type"] == "FundingApplied")
+    filled_weight = next(point for point in full["weights"] if point["time"] == observation(1).timestamp.isoformat())
+    assert filled_weight["current"] > 0.0
+    assert filled_weight["target"] == pytest.approx(0.5)
+    assert fill_markers == [
+        {
+            "id": fill_markers[0]["id"],
+            "time": observation(1).timestamp.isoformat(),
+            "type": "InstrumentFilled",
+            "label": "Instrument fill",
+            "price": 100.0,
+            "ticker": "BTCUSDT",
+            "material": True,
+        }
+    ]
+    assert funding_marker["price"] == 102.0
+    assert {marker["id"] for marker in compressed["markers"]} == {marker["id"] for marker in full["markers"]}
+    assert all(result["portfolio"] for result in ranges.values())
+    assert {name: result["range"] for name, result in ranges.items()} == {
+        "current": "current",
+        "24h": "24h",
+        "7d": "7d",
+        "full": "full",
+    }
+    paper.close()
+
+
+@pytest.mark.anyio
+async def test_material_activity_stays_visible_while_minute_marks_remain_chartable(tmp_path) -> None:
+    target = {**dict.fromkeys(TICKERS, 0.0), "BTCUSDT": 0.5}
+    app = make_app(
+        tmp_path / "paper.sqlite3",
+        FakeClock(datetime(2026, 8, 23, 18, 30, tzinfo=UTC)),
+        FakeFeed([]),
+        FakePolicy([target]),
+    )
+    paper = app.state.paper_dashboard
+    for offset in range(26):
+        paper.advance_once_sync(observation(offset, decision=offset == 0))
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        live = (await client.get("/api/live")).json()
+        history = (await client.get("/api/history")).json()
+        chart = (await client.get("/api/chart", params={"ticker": "BTCUSDT"})).json()
+
+    recent_types = {event["type"] for event in live["recent_events"]}
+    history_types = {event["type"] for event in history["events"]}
+    assert {"DecisionRecord", "InstrumentFilled"} <= recent_types
+    assert {"DecisionRecord", "InstrumentFilled"} <= history_types
+    assert not {"AccountMarked", "AccountMarkReconstructed"} & recent_types
+    assert not {"AccountMarked", "AccountMarkReconstructed"} & history_types
+    assert len(chart["portfolio"]) == 26
+    paper.close()
+
+
+@pytest.mark.anyio
 async def test_asgi_snapshot_restores_mixed_long_short_positions_and_signed_funding(tmp_path) -> None:
     database = tmp_path / "paper.sqlite3"
     clock = FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC))
@@ -267,6 +432,74 @@ async def test_asgi_snapshot_restores_mixed_long_short_positions_and_signed_fund
         assert sides == {"BTCUSDT": "long", "ETHUSDT": "short"}
         assert live["account"]["funding"] < 0.0
         assert live["risk"]["gross_exposure"] > abs(live["risk"]["net_exposure"])
+        assert set(live["account"]) >= {
+            "starting_equity",
+            "current_equity",
+            "net_pnl",
+            "compounded_net_return",
+            "gross_trading_pnl",
+            "transaction_cost",
+            "funding",
+            "turnover",
+            "marked_equity_reconciliation",
+        }
+        assert set(live["risk"]) == {
+            "current_drawdown",
+            "maximum_drawdown",
+            "high_water_equity",
+            "drawdown_limit",
+            "gross_exposure",
+            "net_exposure",
+            "cash_weight",
+            "concentrations",
+        }
+        assert all(
+            set(position)
+            >= {
+                "ticker",
+                "side",
+                "quantity",
+                "mark",
+                "notional",
+                "current_weight",
+                "target_weight",
+                "average_entry",
+                "realized_pnl",
+                "unrealized_pnl",
+            }
+            for position in live["positions"]
+        )
+        assert set(live["activity"]) == {
+            "decisions",
+            "executable_changes",
+            "fills",
+            "below_threshold",
+            "unchanged_targets",
+            "missed_executions",
+            "interventions",
+        }
+        assert set(live) >= {
+            "freshness",
+            "operating_window",
+            "next_decision_at",
+            "pending_fill",
+            "fitting",
+            "controls",
+            "recent_events",
+        }
+        system = (await client.get("/api/system")).json()
+        assert set(system) == {
+            "as_of",
+            "market_feed",
+            "policy",
+            "fitting",
+            "compute",
+            "operating_windows",
+            "notifications",
+            "database",
+            "backup",
+            "service",
+        }
     paper.close()
 
     restored_app = make_app(database, clock, FakeFeed([]), FakePolicy([]))
@@ -377,6 +610,75 @@ async def test_controls_are_protected_idempotent_versioned_and_durable(tmp_path)
         assert restored["account"]["state"] == "Paused"
         assert restored["activity"]["interventions"] == 1
     restored_app.state.paper_dashboard.close()
+
+
+@pytest.mark.anyio
+async def test_activity_keeps_operator_fills_out_of_executable_policy_changes(tmp_path) -> None:
+    target = {**dict.fromkeys(TICKERS, 0.0), "BTCUSDT": 0.5}
+    app = make_app(
+        tmp_path / "paper.sqlite3",
+        FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC)),
+        FakeFeed([]),
+        FakePolicy([target]),
+    )
+    paper = app.state.paper_dashboard
+    paper.advance_once_sync(observation(0, decision=True))
+    paper.advance_once_sync(observation(1))
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        positioned = (await client.get("/api/live")).json()
+        response = await client.post(
+            "/api/controls/flatten",
+            json={"expected_version": positioned["account"]["version"], "confirmation": "FLATTEN"},
+            headers=await control_headers(client, "activity-flatten"),
+        )
+        assert response.status_code == 200
+        paper.advance_once_sync(observation(2))
+        live = (await client.get("/api/live")).json()
+        history = (await client.get("/api/history")).json()
+
+    assert live["activity"] == {
+        "decisions": 1,
+        "executable_changes": 1,
+        "fills": 2,
+        "below_threshold": 0,
+        "unchanged_targets": 0,
+        "missed_executions": 0,
+        "interventions": 1,
+    }
+    assert history["protocol_segments"][0]["executable_changes"] == 1
+    paper.close()
+
+
+@pytest.mark.anyio
+async def test_history_exposes_durable_event_facts_with_kyiv_and_utc_times(tmp_path) -> None:
+    clock = FakeClock(datetime(2026, 1, 15, 12, 0, tzinfo=UTC))
+    app = make_app(tmp_path / "paper.sqlite3", clock, FakeFeed([]), FakePolicy([]))
+    clock.current = datetime(2026, 8, 23, 18, 0, tzinfo=UTC)
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        live = (await client.get("/api/live")).json()
+        paused = await client.post(
+            "/api/controls/pause",
+            json={"expected_version": live["account"]["version"]},
+            headers=await control_headers(client, "timezone-pause"),
+        )
+        assert paused.status_code == 200
+        history = (await client.get("/api/history")).json()
+        flat_start = next(event for event in history["events"] if event["type"] == "FlatStart")
+        intervention = next(event for event in history["events"] if event["type"] == "OperatorIntervention")
+        detail = (await client.get(f"/api/events/{intervention['id']}")).json()
+
+    assert flat_start["display_time"] == {
+        "kyiv": "2026-01-15T14:00:00+02:00",
+        "utc": "2026-01-15T12:00:00+00:00",
+    }
+    assert intervention["display_time"] == {
+        "kyiv": "2026-08-23T21:00:00+03:00",
+        "utc": "2026-08-23T18:00:00+00:00",
+    }
+    assert detail["details"] == {"action": "pause", "cancelled_decision_id": None}
+    app.state.paper_dashboard.close()
 
 
 @pytest.mark.anyio
@@ -500,6 +802,15 @@ async def test_overdue_pending_change_becomes_one_missed_execution_without_a_fil
         assert live["activity"]["missed_executions"] == 1
         history = (await client.get("/api/history")).json()
         assert [event["type"] for event in history["events"]].count("MissedExecution") == 1
+        chart = (await client.get("/api/chart", params={"ticker": "BTCUSDT"})).json()
+        signal_marker = next(marker for marker in chart["markers"] if marker["type"] == "Signal")
+        missed_marker = next(marker for marker in chart["markers"] if marker["type"] == "MissedExecution")
+        detail = (await client.get(f"/api/events/{missed_marker['id']}")).json()
+        assert signal_marker["time"] == observation(0).timestamp.isoformat()
+        assert missed_marker["time"] == observation(4).timestamp.isoformat()
+        assert detail["decision"]["signal_time"] == observation(0).timestamp.isoformat()
+        assert detail["decision"]["outcome"] == "MissedExecution"
+        assert detail["execution"]["outcome"] == "MissedExecution"
     second.state.paper_dashboard.close()
 
 
@@ -715,6 +1026,23 @@ async def test_flatten_and_reset_use_confirmed_serialized_controls(tmp_path) -> 
         history = (await client.get("/api/history")).json()
         assert len(history["accounts"]) == 2
         assert sum(account["active"] for account in history["accounts"]) == 1
+        active_before_archive_reads = (await client.get("/api/live")).json()["account"]
+        archived_history = (await client.get("/api/history", params={"account_id": old_account_id})).json()
+        archived_chart = (
+            await client.get(
+                "/api/chart",
+                params={"account_id": old_account_id, "ticker": "BTCUSDT", "range": "full"},
+            )
+        ).json()
+        archive_event = next(event for event in archived_history["events"] if event["type"] == "AccountArchived")
+        archive_detail = (await client.get(f"/api/events/{archive_event['id']}")).json()
+        active_after_archive_reads = (await client.get("/api/live")).json()["account"]
+        assert archived_history["selected_account_id"] == old_account_id
+        assert archived_history["comparison"]["account_id"] == old_account_id
+        assert len(archived_history["comparison"]["accounts"]) == 2
+        assert archived_chart["portfolio"]
+        assert archive_detail["details"]["new_account_id"] == reset.json()["account"]["id"]
+        assert active_after_archive_reads == active_before_archive_reads
     app.state.paper_dashboard.close()
 
 
@@ -933,6 +1261,104 @@ async def test_no_trade_decision_completes_and_attribution_runs_after_durable_re
     assert detail["attribution"]["status"] == "complete"
     assert detail["attribution"]["input_hash"] == "hash:input-0"
     assert [event.event_type for event in paper.store.events()].count("DecisionCompleted") == 1
+    paper.close()
+
+
+@pytest.mark.anyio
+async def test_below_threshold_decision_remains_auditable_without_a_fill(tmp_path) -> None:
+    target = {**dict.fromkeys(TICKERS, 0.0), "BTCUSDT": 0.005}
+    app = make_app(
+        tmp_path / "paper.sqlite3",
+        FakeClock(datetime(2026, 8, 23, 18, 1, tzinfo=UTC)),
+        FakeFeed([]),
+        FakePolicy([target]),
+    )
+    paper = app.state.paper_dashboard
+    await paper.advance_once(observation(0, decision=True))
+    await paper.advance_once(observation(1))
+    decision = next(event for event in paper.store.events() if event.event_type == "DecisionRecord")
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        live = (await client.get("/api/live")).json()
+        detail = (await client.get(f"/api/events/{decision.event_id}")).json()
+
+    assert live["activity"]["decisions"] == 1
+    assert live["activity"]["below_threshold"] == 1
+    assert live["activity"]["fills"] == 0
+    assert detail["decision"]["threshold_outcome"] == "below_threshold"
+    assert detail["decision"]["outcome"] == "below_threshold"
+    assert detail["execution"] is None
+    paper.close()
+
+
+@pytest.mark.anyio
+async def test_pending_attribution_cannot_delay_the_scheduled_fill(tmp_path) -> None:
+    started = threading.Event()
+    release = threading.Event()
+
+    class BlockingAttribution:
+        def attribute(self, input_id: str, decision: dict[str, Any]) -> dict[str, Any]:
+            started.set()
+            assert release.wait(timeout=1.0)
+            return FakeAttribution().attribute(input_id, decision)
+
+    target = {**dict.fromkeys(TICKERS, 0.0), "BTCUSDT": 0.5}
+    app = create_application(
+        database_path=tmp_path / "paper.sqlite3",
+        tickers=TICKERS,
+        clock=FakeClock(datetime(2026, 8, 23, 18, 1, tzinfo=UTC)),
+        market_feed=FakeFeed([]),
+        policy_backend=FakePolicy([target]),
+        notifications=NotificationRecorder(),
+        attribution_backend=BlockingAttribution(),
+    )
+    paper = app.state.paper_dashboard
+    await paper.advance_once(observation(0, decision=True))
+    assert await asyncio.to_thread(started.wait, 1.0)
+    decision = next(event for event in paper.store.events() if event.event_type == "DecisionRecord")
+    assert paper.event_snapshot(decision.event_id)["attribution"]["status"] == "pending"
+
+    filled = await paper.advance_once(observation(1))
+    assert filled["activity"]["fills"] == 1
+    assert filled["pending_fill"] is None
+    release.set()
+    await asyncio.gather(*paper._attribution_tasks)
+    assert paper.event_snapshot(decision.event_id)["attribution"]["status"] == "complete"
+    paper.close()
+
+
+@pytest.mark.anyio
+async def test_failed_attribution_is_visible_without_changing_the_exact_decision_record(tmp_path) -> None:
+    class FailingAttribution:
+        def attribute(self, input_id: str, decision: dict[str, Any]) -> dict[str, Any]:
+            del input_id, decision
+            raise RuntimeError("explanation worker ran out of memory")
+
+    app = create_application(
+        database_path=tmp_path / "paper.sqlite3",
+        tickers=TICKERS,
+        clock=FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC)),
+        market_feed=FakeFeed([]),
+        policy_backend=FakePolicy([dict.fromkeys(TICKERS, 0.0)]),
+        notifications=NotificationRecorder(),
+        attribution_backend=FailingAttribution(),
+    )
+    paper = app.state.paper_dashboard
+    await paper.advance_once(observation(0, decision=True))
+    await asyncio.gather(*paper._attribution_tasks)
+    decision = next(event for event in paper.store.events() if event.event_type == "DecisionRecord")
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        detail = (await client.get(f"/api/events/{decision.event_id}")).json()
+
+    assert detail["decision"]["input_id"] == "input-0"
+    assert detail["decision"]["attribution"] == {
+        "status": "failed",
+        "event_id": detail["attribution"]["event_id"],
+    }
+    assert detail["attribution"]["status"] == "failed"
+    assert detail["attribution"]["label"] == "Approximate post-hoc influence evidence"
+    assert detail["attribution"]["error"] == "explanation worker ran out of memory"
     paper.close()
 
 
