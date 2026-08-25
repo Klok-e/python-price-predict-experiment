@@ -85,8 +85,10 @@ archived Paper Accounts remain browsable and comparable.
 
 - 2026-08-25: completed the auditable dashboard slice through the public ASGI seam and deterministic
   numerical attribution/accounting seams. Lock verification, Ruff formatting/lint, strict mypy, and
-  the complete suite passed with 111 passed, 1 optional Playwright smoke skipped, and 14 third-party
+  the complete suite passed with 113 passed, 1 optional Playwright smoke skipped, and 14 third-party
   Torch deprecation warnings. A real `agent-browser` smoke against a temporary localhost ASGI instance
   verified chart startup, signal/fill marker detail, exact Decision Record and execution data, signed
-  approximate attribution, Live/History/System navigation, Pause wiring, and the automatic one-minute
-  financial refresh.
+  approximate attribution, Live/History/System navigation, archived-account comparison, Pause wiring,
+  and the automatic one-minute financial refresh. The review follow-up made funding markers
+  instrument-specific, removed client-side protocol aliases, and ensured attribution never overlaps
+  scheduled fills or active policy fitting.

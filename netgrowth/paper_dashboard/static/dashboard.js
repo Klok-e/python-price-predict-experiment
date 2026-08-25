@@ -523,19 +523,37 @@
   }
 
   function renderHistoryComparison(history, accounts) {
-    const selected = accounts.find((account) => first(account.id, account.account_id) === state.selectedAccount) ?? {};
-    const comparison = first(history.comparison, selected.metrics, selected.account_metrics, {});
+    const selected = accounts.find((account) => account.id === state.selectedAccount) ?? {};
+    const comparison = history.comparison ?? {};
     const metrics = [
-      ["Account", first(selected.label, selected.name, selected.id, selected.account_id, state.selectedAccount, "—")],
-      ["Lifecycle", first(selected.state, selected.lifecycle_state, selected.active ? "Active" : "Archived", "—")],
-      ["Marked Equity", formatMoney(first(comparison.current_equity, comparison.marked_equity, selected.current_equity))],
-      ["Compounded Net Return", formatPercent(first(comparison.compounded_net_return, comparison.net_return, selected.compounded_net_return))],
-      ["Maximum Drawdown", formatPercent(first(comparison.maximum_drawdown, comparison.max_drawdown, selected.maximum_drawdown))],
-      ["Policy Protocol", first(comparison.protocol_id, selected.protocol_id, selected.policy_protocol_id, "—")],
-      ["Started", formatDateTime(first(selected.started_at, selected.created_at), { full: true, zone: true })],
-      ["Archived", formatDateTime(first(selected.archived_at, selected.ended_at), { full: true, zone: true })],
+      ["Account", selected.label ?? state.selectedAccount ?? "—"],
+      ["Lifecycle", selected.active ? "Active" : "Archived"],
+      ["Marked Equity", formatMoney(comparison.current_equity)],
+      ["Compounded Net Return", formatPercent(comparison.compounded_net_return)],
+      ["Maximum Drawdown", formatPercent(comparison.maximum_drawdown)],
+      ["Policy Protocol", comparison.protocol_id ?? "—"],
+      ["Started", formatDateTime(selected.started_at, { full: true, zone: true })],
+      ["Archived", formatDateTime(selected.archived_at, { full: true, zone: true })],
     ];
-    $("history-comparison").replaceChildren(...metrics.map((metric) => metricCard(...metric)));
+    const accountComparisons = asArray(comparison.accounts).map((account) => {
+      const accountId = account.account_id;
+      const accountRow = accounts.find((candidate) => candidate.id === accountId);
+      const label = accountRow?.label ?? accountId;
+      const detail = [
+        `Equity ${formatMoney(account.current_equity)}`,
+        `Max drawdown ${formatPercent(account.maximum_drawdown)}`,
+        `Protocol ${account.protocol_id}`,
+      ].join(" · ");
+      return metricCard(
+        label,
+        formatPercent(account.compounded_net_return),
+        `${accountId === state.selectedAccount ? "Selected · " : ""}${detail}`,
+      );
+    });
+    $("history-comparison").replaceChildren(
+      ...metrics.map((metric) => metricCard(...metric)),
+      ...accountComparisons,
+    );
   }
 
   function renderProtocolSegments(history) {
@@ -618,25 +636,25 @@
 
   function renderEventDetail(event) {
     const detail = $("event-detail");
-    const title = first(event.title, event.label, humanize(first(event.type, event.event_type, "Event")));
+    const title = event.title ?? humanize(event.type);
     const header = eventDetailSection("Event", [
-      element("span", { className: "detail-badge", text: humanize(first(event.type, event.event_type, "Material event")) }),
+      element("span", { className: "detail-badge", text: humanize(event.type) }),
       element("h3", { text: title }),
-      element("p", { className: "detail-intro", text: first(event.summary, event.outcome, "Durable Paper Account history") }),
+      element("p", { className: "detail-intro", text: event.summary ?? "Durable Paper Account history" }),
       definitionList({
-        event_id: first(event.id, event.event_id),
-        ticker: first(event.ticker, event.symbol),
-        Kyiv: formatDateTime(first(event.time, event.timestamp, event.at), { full: true, seconds: true, zone: true }),
-        UTC: formatDateTime(first(event.time, event.timestamp, event.at), { utc: true, full: true, seconds: true, zone: true }),
+        event_id: event.id,
+        ticker: event.ticker,
+        Kyiv: formatDateTime(event.time, { full: true, seconds: true, zone: true }),
+        UTC: formatDateTime(event.time, { utc: true, full: true, seconds: true, zone: true }),
         decision_id: event.decision_id,
       }),
     ]);
     const sections = [header];
-    const details = first(event.details, event.payload);
-    if (details && Object.keys(details).length && first(event.type, event.event_type) !== "DecisionRecord") {
+    const details = event.details;
+    if (details && Object.keys(details).length && event.type !== "DecisionRecord") {
       sections.push(eventDetailSection("Event facts", [definitionList(details)]));
     }
-    const decision = first(event.decision, event.decision_record);
+    const decision = event.decision;
     if (decision) {
       sections.push(eventDetailSection("Decision record", [
         element("span", { className: "detail-badge", text: "Exact authoritative record" }),
@@ -644,14 +662,14 @@
         definitionList(decision),
       ]));
     }
-    const execution = first(event.execution, event.execution_outcome, event.fill, event.missed_execution);
+    const execution = event.execution;
     if (execution) {
       sections.push(eventDetailSection("Execution outcome", [
         element("span", { className: "detail-badge", text: "Exact account mutation" }),
         definitionList(execution),
       ]));
     }
-    const attribution = first(event.attribution, event.model_attribution);
+    const attribution = event.attribution;
     if (attribution) sections.push(attributionSection(attribution));
     else if (decision) {
       sections.push(eventDetailSection("Model attribution", [
@@ -667,16 +685,16 @@
   }
 
   function attributionSection(attribution) {
-    const label = first(attribution.label, "Approximate post-hoc influence evidence");
-    const influences = asArray(first(attribution.top_influences, attribution.influences));
+    const label = attribution.label ?? "Approximate post-hoc influence evidence";
+    const influences = asArray(attribution.top_influences);
     const influenceList = element("ol", { className: "influence-list" }, influences.map((influence) => element("li", {}, [
-      element("span", { text: first(influence.label, influence.feature, influence.name, influence.group, "Influence") }),
-      element("strong", { text: formatNumber(first(influence.value, influence.attribution, influence.score), 5) }),
+      element("span", { text: influence.label ?? "Influence" }),
+      element("strong", { text: formatNumber(influence.value, 5) }),
     ])));
     return eventDetailSection("Model attribution", [
       element("span", { className: "detail-badge detail-badge-approximate", text: label }),
       element("p", { className: "detail-intro", text: "Influence evidence is approximate and post-hoc; it is not a causal explanation, trade reason, or profitability claim." }),
-      influences.length ? influenceList : element("p", { className: "detail-intro", text: first(attribution.status, "No top influences reported") }),
+      influences.length ? influenceList : element("p", { className: "detail-intro", text: attribution.status ?? "No top influences reported" }),
       definitionList({
         status: attribution.status,
         method: attribution.method,

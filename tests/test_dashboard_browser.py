@@ -98,8 +98,34 @@ class _DashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/history":
             self._json(
                 {
-                    "accounts": [{"id": "paper-7", "label": "Paper account 7", "active": True}],
+                    "accounts": [
+                        {"id": "paper-7", "label": "Paper account 7", "active": True},
+                        {"id": "paper-6", "label": "Paper account 6", "active": False},
+                    ],
                     "selected_account_id": "paper-7",
+                    "comparison": {
+                        "account_id": "paper-7",
+                        "protocol_id": "net-growth-v1",
+                        "current_equity": 10_105.25,
+                        "compounded_net_return": 0.010525,
+                        "maximum_drawdown": 0.018,
+                        "accounts": [
+                            {
+                                "account_id": "paper-7",
+                                "protocol_id": "net-growth-v1",
+                                "current_equity": 10_105.25,
+                                "compounded_net_return": 0.010525,
+                                "maximum_drawdown": 0.018,
+                            },
+                            {
+                                "account_id": "paper-6",
+                                "protocol_id": "net-growth-v0",
+                                "current_equity": 9_850.0,
+                                "compounded_net_return": -0.015,
+                                "maximum_drawdown": 0.031,
+                            },
+                        ],
+                    },
                     "protocol_segments": [
                         {
                             "protocol_id": "net-growth-v1",
@@ -315,6 +341,8 @@ def test_dashboard_startup_navigation_marker_detail_and_control_wiring(
         playwright.expect(page.get_by_role("heading", name="Account history")).to_be_visible()
         playwright.expect(page.get_by_role("heading", name="Policy Protocol segments")).to_be_visible()
         playwright.expect(page.get_by_text("BTC target increased", exact=True).first).to_be_visible()
+        playwright.expect(page.get_by_text("Paper account 6", exact=True)).to_be_visible()
+        playwright.expect(page.get_by_text("-1.50%", exact=True)).to_be_visible()
 
         page.get_by_role("tab", name="System").click()
         playwright.expect(page.get_by_role("heading", name="System health")).to_be_visible()

@@ -51,6 +51,10 @@ KYIV_TIME_ZONE = ZoneInfo("Europe/Kiev")
 CHART_ONLY_EVENT_TYPES = frozenset({"AccountMarked", "AccountMarkReconstructed"})
 
 
+def _is_material_event(event: AccountEvent) -> bool:
+    return event.event_type not in CHART_ONLY_EVENT_TYPES
+
+
 class MarketFeed(Protocol):
     def observe(self, after: datetime | None) -> MarketObservation | Awaitable[MarketObservation]: ...
 
@@ -612,13 +616,7 @@ class PaperDashboardApplication:
                     )
                 )
 
-            appended = self._commit(events)
-            decision_event = next(
-                (event for event in appended if event.event_type == "DecisionRecord"),
-                None,
-            )
-            if decision_event is not None:
-                self._schedule_attribution(decision_event)
+            self._commit(events)
             if prior_pending is not None and prior_pending.kind == "reset" and self._is_flat():
                 self._complete_reset(observation.timestamp)
             self._deliver_notifications()
@@ -857,6 +855,8 @@ class PaperDashboardApplication:
             return
         if self._fitting_task is not None and not self._fitting_task.done():
             return
+        if any(not task.done() for task in self._attribution_tasks):
+            return
         if self.state.fitting.get("status") == "running":
             self.fail_policy_fitting("previous fitting was interrupted before Policy Handoff")
         now = self._now()
@@ -993,6 +993,9 @@ class PaperDashboardApplication:
 
     def resume_pending_attributions(self) -> None:
         """Requeue durable Decision Records whose lower-priority explanation was interrupted."""
+        fitting_active = self._fitting_task is not None and not self._fitting_task.done()
+        if self.state.pending_execution is not None or fitting_active:
+            return
         events = self.store.events(self.state.account_id)
         terminal = {
             event.decision_id for event in events if event.event_type in {"ModelAttribution", "ModelAttributionFailed"}
@@ -1086,7 +1089,7 @@ class PaperDashboardApplication:
             else:
                 account_snapshot = None
             events = self.store.events(state.account_id)
-            material_events = [event for event in events if event.event_type not in CHART_ONLY_EVENT_TYPES]
+            material_events = [event for event in events if _is_material_event(event)]
             activity = self._activity(events)
             positions = (
                 [
@@ -1236,9 +1239,7 @@ class PaperDashboardApplication:
             "accounts": account_rows,
             "selected_account_id": selected,
             "events": [
-                self._event_summary(event)
-                for event in self.store.events(selected)
-                if event.event_type not in CHART_ONLY_EVENT_TYPES
+                self._event_summary(event) for event in self.store.events(selected) if _is_material_event(event)
             ],
             "protocol_segments": segments_by_account[selected],
             "comparison": {**selected_comparison, "accounts": comparisons},
@@ -1367,13 +1368,20 @@ class PaperDashboardApplication:
                 target = payload.get("target_weights", {}).get(ticker, 0.0)
                 current = payload.get("current_portfolio", {}).get(ticker, 0.0)
                 weights.append({"time": event.occurred_at.isoformat(), "current": current, "target": target})
-            if event.event_type in {
-                "DecisionRecord",
-                "InstrumentFilled",
-                "MissedExecution",
-                "FundingApplied",
-                "OperatorIntervention",
-            } and (event.event_type != "InstrumentFilled" or event.ticker == ticker):
+            marker_applies = event.event_type != "InstrumentFilled" or event.ticker == ticker
+            if event.event_type == "FundingApplied":
+                marker_applies = ticker in event.payload.get("rates", {})
+            if (
+                event.event_type
+                in {
+                    "DecisionRecord",
+                    "InstrumentFilled",
+                    "MissedExecution",
+                    "FundingApplied",
+                    "OperatorIntervention",
+                }
+                and marker_applies
+            ):
                 marker_price = event.payload.get("reference_price")
                 if event.event_type == "FundingApplied":
                     marker_price = event.payload.get("mark_prices", {}).get(ticker)
@@ -1385,7 +1393,7 @@ class PaperDashboardApplication:
                         "type": marker_type,
                         "label": _title(marker_type),
                         "price": marker_price,
-                        "ticker": event.ticker,
+                        "ticker": ticker if event.event_type == "FundingApplied" else event.ticker,
                         "material": True,
                     }
                 )
@@ -1943,8 +1951,8 @@ async def _operator_loop(paper: PaperDashboardApplication, interval_seconds: flo
                 # shutdown ordered behind its durable transition before closing SQLite.
                 await asyncio.shield(advance)
                 raise
-            paper.resume_pending_attributions()
             await paper.maybe_start_policy_fitting()
+            paper.resume_pending_attributions()
             backoff = (
                 interval_seconds
                 if snapshot["freshness"]["status"] == DataStatus.FRESH.value

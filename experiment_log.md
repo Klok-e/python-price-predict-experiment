@@ -193,3 +193,33 @@ Routine infrastructure tests are not experiments.
   event `60b0388e-ac12-46e4-9d8a-3c0b6a99b086` remained complete after a service restart with the
   same account, lifecycle, model identity, equity, metrics, and history. Background policy prewarming
   now moves one-time canonical-data and GPU-kernel preparation ahead of future Decision Bars.
+
+### 2026-08-25 - Auditable Paper Account dashboard acceptance
+
+- Configuration hash: `policy.toml`
+  `46394d42a223d2b4b0a83c6e48f12975bdba5cc1eab3b7305405735dda2cd90f`
+- Code hash: Paper Account application
+  `f2cd6c9640b06e856888709281e660212638dcb1ab63346bec18285f1070207f`; dashboard client
+  `f71b123b50ce9d6f51978834894fb2bcc5484fb7f7a14a84de80c651d7ac9141`
+- Data hash: not applicable; acceptance used deterministic temporary ASGI/SQLite fixtures and did not
+  read or mutate the production market dataset
+- Model hash: not applicable; Integrated Gradients behavior used deterministic small-model and fake
+  attribution seams, not a production Fitted Policy
+- Walk-Forward Compounded Net Return: not rerun; this interface/auditability slice makes no new
+  historical or production-profitability claim
+- Maximum Drawdown by fold: not rerun; deterministic tests verified the accepted account and risk
+  fields, reconciliation, and archived-account comparisons
+- Turnover / costs / funding: no performance result was produced; deterministic tests verified all
+  three fields and their event/account classifications
+- Historical Holdout or Paper Account state: unchanged; no deployed service or production Paper
+  Account was modified. Pytest databases and the browser fixture were temporary, and the local browser
+  and HTTP server were closed after acceptance
+- Verdict: ticket 03 dashboard behavior accepted as Development Evidence; no evidence here establishes
+  real-world profitability or causal model explanation
+- Notes: `uv lock --check`, Ruff formatting/lint, strict mypy, and the complete suite passed (`113
+  passed, 1 skipped, 14` third-party Torch deprecation warnings). The focused dashboard/accounting/
+  attribution/persistence/browser suite passed (`58 passed, 1 skipped`). Agent-browser verified the
+  build-free History comparison for active and archived accounts, linked exact Decision Record and
+  execution detail, explicitly approximate attribution, and correct Kyiv/UTC rendering without browser
+  errors. Review follow-up made funding markers instrument-specific, removed client protocol aliases,
+  and used cooperative admission so attribution never overlaps pending fills or active policy fitting.

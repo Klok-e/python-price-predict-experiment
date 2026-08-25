@@ -353,6 +353,7 @@ async def test_selected_ticker_chart_retains_minute_weights_and_only_its_fill_ma
             ).json()
             for range_name in ("current", "24h", "7d", "full")
         }
+        sol = (await client.get("/api/chart", params={"ticker": "SOLUSDT", "range": "full"})).json()
 
     fill_markers = [marker for marker in full["markers"] if marker["type"] == "InstrumentFilled"]
     funding_marker = next(marker for marker in full["markers"] if marker["type"] == "FundingApplied")
@@ -371,6 +372,7 @@ async def test_selected_ticker_chart_retains_minute_weights_and_only_its_fill_ma
         }
     ]
     assert funding_marker["price"] == 102.0
+    assert all(marker["type"] != "FundingApplied" for marker in sol["markers"])
     assert {marker["id"] for marker in compressed["markers"]} == {marker["id"] for marker in full["markers"]}
     assert all(result["portfolio"] for result in ranges.values())
     assert {name: result["range"] for name, result in ranges.items()} == {
@@ -1245,10 +1247,13 @@ async def test_no_trade_decision_completes_and_attribution_runs_after_durable_re
     paper = app.state.paper_dashboard
 
     await paper.advance_once(observation(0, decision=True))
+    assert tuple(paper._attribution_tasks) == ()
+    assert attribution.calls == []
+    await paper.advance_once(observation(1))
+    paper.resume_pending_attributions()
     tasks = tuple(paper._attribution_tasks)
     assert tasks
     await asyncio.gather(*tasks)
-    await paper.advance_once(observation(1))
 
     decision = next(
         event for event in paper.store.events(paper.state.account_id) if event.event_type == "DecisionRecord"
@@ -1292,7 +1297,7 @@ async def test_below_threshold_decision_remains_auditable_without_a_fill(tmp_pat
 
 
 @pytest.mark.anyio
-async def test_pending_attribution_cannot_delay_the_scheduled_fill(tmp_path) -> None:
+async def test_attribution_waits_for_the_scheduled_fill(tmp_path) -> None:
     started = threading.Event()
     release = threading.Event()
 
@@ -1314,13 +1319,16 @@ async def test_pending_attribution_cannot_delay_the_scheduled_fill(tmp_path) -> 
     )
     paper = app.state.paper_dashboard
     await paper.advance_once(observation(0, decision=True))
-    assert await asyncio.to_thread(started.wait, 1.0)
+    assert not started.is_set()
+    assert tuple(paper._attribution_tasks) == ()
     decision = next(event for event in paper.store.events() if event.event_type == "DecisionRecord")
     assert paper.event_snapshot(decision.event_id)["attribution"]["status"] == "pending"
 
     filled = await paper.advance_once(observation(1))
     assert filled["activity"]["fills"] == 1
     assert filled["pending_fill"] is None
+    paper.resume_pending_attributions()
+    assert await asyncio.to_thread(started.wait, 1.0)
     release.set()
     await asyncio.gather(*paper._attribution_tasks)
     assert paper.event_snapshot(decision.event_id)["attribution"]["status"] == "complete"
@@ -1345,6 +1353,8 @@ async def test_failed_attribution_is_visible_without_changing_the_exact_decision
     )
     paper = app.state.paper_dashboard
     await paper.advance_once(observation(0, decision=True))
+    await paper.advance_once(observation(1))
+    paper.resume_pending_attributions()
     await asyncio.gather(*paper._attribution_tasks)
     decision = next(event for event in paper.store.events() if event.event_type == "DecisionRecord")
 
@@ -1399,6 +1409,7 @@ async def test_restart_requeues_a_durable_decision_with_pending_attribution(tmp_
         attribution_backend=resumed_attribution,
     )
     restored = reopened.state.paper_dashboard
+    await restored.advance_once(observation(5))
     restored.resume_pending_attributions()
     tasks = tuple(restored._attribution_tasks)
     assert tasks
@@ -1408,6 +1419,109 @@ async def test_restart_requeues_a_durable_decision_with_pending_attribution(tmp_
     assert resumed_attribution.calls == ["input-0"]
     assert detail["attribution"]["status"] == "complete"
     restored.close()
+
+
+@pytest.mark.anyio
+async def test_pending_attribution_waits_for_active_policy_fitting(tmp_path) -> None:
+    fitting_started = threading.Event()
+    fitting_release = threading.Event()
+    attribution_started = threading.Event()
+
+    class BlockingFitter(FakeFitter):
+        def fit(self, observed_at: datetime, current_weights: dict[str, float]) -> FittedPolicyCandidate:
+            fitting_started.set()
+            assert fitting_release.wait(timeout=1.0)
+            return super().fit(observed_at, current_weights)
+
+    class RecordingAttribution(FakeAttribution):
+        def attribute(self, input_id: str, decision: dict[str, Any]) -> dict[str, Any]:
+            attribution_started.set()
+            return super().attribute(input_id, decision)
+
+    attribution = RecordingAttribution()
+    app = create_application(
+        database_path=tmp_path / "paper.sqlite3",
+        tickers=TICKERS,
+        clock=FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC)),
+        market_feed=FakeFeed([]),
+        policy_backend=FakePolicy([dict.fromkeys(TICKERS, 0.0)]),
+        notifications=NotificationRecorder(),
+        policy_fitter=BlockingFitter(tmp_path / "model-2.pt"),
+        attribution_backend=attribution,
+    )
+    paper = app.state.paper_dashboard
+    paper.advance_once_sync(observation(0, decision=True))
+    paper.advance_once_sync(observation(1))
+
+    await paper.maybe_start_policy_fitting()
+    assert await asyncio.to_thread(fitting_started.wait, 1.0)
+    paper.resume_pending_attributions()
+    await asyncio.sleep(0)
+    assert tuple(paper._attribution_tasks) == ()
+    assert not attribution_started.is_set()
+
+    fitting_release.set()
+    assert paper._fitting_task is not None
+    await paper._fitting_task
+    paper.resume_pending_attributions()
+    await asyncio.gather(*paper._attribution_tasks)
+
+    assert attribution.calls == ["input-0"]
+    paper.close()
+
+
+@pytest.mark.anyio
+async def test_due_policy_fitting_never_overlaps_inflight_attribution(tmp_path) -> None:
+    attribution_started = threading.Event()
+    attribution_release = threading.Event()
+    fitting_started = threading.Event()
+    fitting_release = threading.Event()
+
+    class BlockingAttribution(FakeAttribution):
+        def attribute(self, input_id: str, decision: dict[str, Any]) -> dict[str, Any]:
+            attribution_started.set()
+            assert attribution_release.wait(timeout=1.0)
+            return super().attribute(input_id, decision)
+
+    class BlockingFitter(FakeFitter):
+        def fit(self, observed_at: datetime, current_weights: dict[str, float]) -> FittedPolicyCandidate:
+            fitting_started.set()
+            assert fitting_release.wait(timeout=1.0)
+            return super().fit(observed_at, current_weights)
+
+    app = create_application(
+        database_path=tmp_path / "paper.sqlite3",
+        tickers=TICKERS,
+        clock=FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC)),
+        market_feed=FakeFeed([]),
+        policy_backend=FakePolicy([dict.fromkeys(TICKERS, 0.0)]),
+        notifications=NotificationRecorder(),
+        policy_fitter=BlockingFitter(tmp_path / "model-2.pt"),
+        attribution_backend=BlockingAttribution(),
+    )
+    paper = app.state.paper_dashboard
+    paper.advance_once_sync(observation(0, decision=True))
+    paper.advance_once_sync(observation(1))
+    paper.resume_pending_attributions()
+    assert await asyncio.to_thread(attribution_started.wait, 1.0)
+
+    await paper.maybe_start_policy_fitting()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        system = (await client.get("/api/system")).json()
+        decision = next(event for event in paper.store.events() if event.event_type == "DecisionRecord")
+        detail = (await client.get(f"/api/events/{decision.event_id}")).json()
+    assert system["fitting"]["status"] == "idle"
+    assert detail["attribution"]["status"] == "pending"
+    assert not fitting_started.is_set()
+
+    attribution_release.set()
+    await asyncio.gather(*paper._attribution_tasks)
+    await paper.maybe_start_policy_fitting()
+    assert await asyncio.to_thread(fitting_started.wait, 1.0)
+    fitting_release.set()
+    assert paper._fitting_task is not None
+    await paper._fitting_task
+    paper.close()
 
 
 def test_notification_failure_remains_visible_after_process_restart(tmp_path) -> None:
