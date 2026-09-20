@@ -172,6 +172,20 @@ def test_training_latency_return_belongs_to_the_pre_fill_portfolio() -> None:
     assert path.simple_growth[0].item() == pytest.approx(0.0)
 
 
+def test_training_executes_signal_time_qualified_change_after_latency_reduces_fill_turnover() -> None:
+    path = _training_rollout(
+        torch.full((2, 1), 0.04),
+        torch.tensor([[1.6]]),
+        torch.tensor([[0.0], [1.0]]),
+        torch.zeros((2, 1)),
+        torch.zeros((2, 1)),
+        transaction_cost_rate=0.0,
+        minimum_turnover=0.01,
+    )
+
+    assert path.turnover[1].item() > 0.0
+
+
 @pytest.mark.skipif(not torch.cuda.is_available() or torch.version.hip is None, reason="requires a ROCm GPU")
 def test_full_training_episode_backward_is_stable_on_rocm() -> None:
     torch.manual_seed(17)

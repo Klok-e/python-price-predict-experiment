@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Protocol
 
-from netgrowth.accounting import AccountAccounting, PassiveBenchmarks
+from netgrowth.accounting import AccountAccounting, HoldBenchmark, PassiveBenchmarks
 from netgrowth.simulation import SimulationState
 
 
@@ -50,6 +50,14 @@ def policy_revision_is_compatible(
         and proposed.keys() >= POLICY_COMPATIBILITY_DIMENSIONS
         and (not current or current == proposed)
     )
+
+
+def eligibility_revision_is_supported(current: Mapping[str, object], proposed: Mapping[str, object]) -> bool:
+    prior = dict(current)
+    if prior.get("execution_semantics") != "delayed-midpoint-adverse-cost-v1":
+        return False
+    prior["execution_semantics"] = "signal-time-eligibility-delayed-midpoint-v2"
+    return prior == proposed and proposed.keys() >= POLICY_COMPATIBILITY_DIMENSIONS
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,10 +148,15 @@ class PaperAccountState:
     compatibility_manifest: dict[str, Any] = field(default_factory=dict)
     proposed_protocol_id: str | None = None
     proposed_compatibility_manifest: dict[str, Any] = field(default_factory=dict)
-    fitting: dict[str, Any] = field(default_factory=lambda: {"status": "idle"})
+    fitting: dict[str, Any] = field(
+        default_factory=lambda: {"status": "idle", "attempt_count": 0, "next_retry_at": None}
+    )
     notification_error: str | None = None
     backup_error: str | None = None
     operator_error: str | None = None
+    model_fitted_at: str | None = None
+    revision: dict[str, Any] = field(default_factory=dict)
+    hold_benchmark: HoldBenchmark | None = None
     active: bool = True
 
     @classmethod

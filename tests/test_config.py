@@ -16,7 +16,7 @@ def test_policy_protocol_manifest_separates_revision_from_account_compatibility(
         "trading_universe": list(config.tickers),
         "account_currency": "USD",
         "position_semantics": "signed-perpetual-target-weights-v1",
-        "execution_semantics": "delayed-midpoint-adverse-cost-v1",
+        "execution_semantics": "signal-time-eligibility-delayed-midpoint-v2",
         "risk_semantics": "marked-equity-no-leverage-drawdown-stop-v1",
     }
     assert config.compatibility_hash != config.identity_hash

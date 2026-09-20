@@ -26,7 +26,11 @@ from netgrowth.paper_dashboard.application import (
     create_application,
 )
 from netgrowth.paper_dashboard.domain import MarketObservation, PolicyDecision
-from netgrowth.paper_dashboard.production import ProductionMarketFeed, ProductionPolicyBackend
+from netgrowth.paper_dashboard.production import (
+    ProductionMarketFeed,
+    ProductionPolicyBackend,
+    _causal_policy_input,
+)
 
 TICKERS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT")
 
@@ -490,7 +494,7 @@ async def test_asgi_snapshot_restores_mixed_long_short_positions_and_signed_fund
             "recent_events",
         }
         system = (await client.get("/api/system")).json()
-        assert set(system) == {
+        assert set(system) >= {
             "as_of",
             "market_feed",
             "policy",
@@ -1883,6 +1887,7 @@ def test_production_schedule_runs_once_on_the_first_window_after_sunday_deadline
             "status": "failed",
             "due_at": sunday.isoformat(),
             "failed_at": (sunday + timedelta(minutes=1)).isoformat(),
+            "next_retry_at": (sunday + timedelta(minutes=6)).isoformat(),
         },
     )
     assert backend.is_due(
@@ -2098,7 +2103,8 @@ def test_compatible_revision_and_replacement_policy_commit_as_one_boundary(tmp_p
     assert paper.state.protocol_id == "protocol-2"
     assert paper.state.model_id == "model-2"
     assert paper.state.model_checkpoint == str(fitter.checkpoint)
-    assert paper.state.fitting == {"status": "idle"}
+    assert paper.state.fitting["status"] == "idle"
+    assert paper.state.fitting["attempt_count"] == 0
     assert fitter.active_model_id == "model-2"
     boundary = [
         event.event_type for event in paper.store.events() if event.event_type in {"PolicyRevision", "PolicyHandoff"}
@@ -2316,7 +2322,8 @@ def test_initial_fitted_policy_selection_does_not_count_as_a_completed_weekly_fi
 
     assert paper.state.model_id == "model-1"
     assert paper.state.model_checkpoint == "/models/model-1.pt"
-    assert paper.state.fitting == {"status": "idle"}
+    assert paper.state.fitting["status"] == "idle"
+    assert paper.state.fitting["attempt_count"] == 0
     assert [event.event_type for event in paper.store.events()].count("FittedPolicySelected") == 1
     assert "PolicyHandoff" not in {event.event_type for event in paper.store.events()}
     paper.close()
@@ -2418,6 +2425,7 @@ def test_production_decision_identity_hashes_exact_market_state_and_current_port
         device="cpu",
         fitted_model=selected,
     )
+    backend._serialize_attribution_input = lambda **_kwargs: b"exact prepared input"  # type: ignore[method-assign]
     current = {ticker: index / 10 for index, ticker in enumerate(reversed(TICKERS))}
     decision = backend.decide(observation(0, decision=True), current)
     expected = hashlib.sha256(
@@ -2471,121 +2479,25 @@ def test_production_decision_rejects_implicit_refitting(tmp_path) -> None:
     assert backend.fitted_model == selected
 
 
-def test_restarted_attribution_rejects_changed_canonical_market_state(tmp_path) -> None:
-    class Adapter:
-        def __init__(self, canonical: CanonicalDataset) -> None:
-            self.canonical = canonical
-
-        def load(self) -> CanonicalDataset:
-            return self.canonical
-
-    class Backend:
-        def paper(self, *args: Any, **kwargs: Any) -> SimpleNamespace:
-            del args, kwargs
-            return SimpleNamespace(
-                refitted=False,
-                model_bytes=b"selected-policy",
-                target_weights=dict.fromkeys(TICKERS, 0.0),
-            )
-
+def test_causal_policy_input_keeps_the_signal_time_hash_when_later_rows_arrive() -> None:
+    signal_time = observation(0).timestamp
     original = canonical_policy_input(periods=3)
-    corrected = canonical_policy_input(periods=6, corrected=True)
-    selected = b"selected-policy"
-    config = load_config("policy.toml")
-    current = dict.fromkeys(TICKERS, 0.0)
-    decision_backend = ProductionPolicyBackend(
-        adapter=Adapter(original),
-        backend=Backend(),
-        fitting_adapter=Adapter(original),
-        attribution_adapter=Adapter(original),
-        fitting_backend=Backend(),
-        checkpoint_directory=tmp_path,
-        config=config,
-        device="cpu",
-        fitted_model=selected,
-    )
-    decision = decision_backend.decide(observation(0, decision=True), current)
-    resumed = ProductionPolicyBackend(
-        adapter=Adapter(corrected),
-        backend=Backend(),
-        fitting_adapter=Adapter(corrected),
-        attribution_adapter=Adapter(corrected),
-        fitting_backend=Backend(),
-        checkpoint_directory=tmp_path,
-        config=config,
-        device="cpu",
-        fitted_model=selected,
-    )
+    later_rows = canonical_policy_input(periods=6)
 
-    with pytest.raises(RuntimeError, match="canonical Market State identity"):
-        resumed._recover_attribution_input(
-            {
-                "signal_time": observation(0).timestamp.isoformat(),
-                "current_portfolio": current,
-                "model_id": decision.model_id,
-                "input_id": decision.input_id,
-            }
-        )
+    original_slice = _causal_policy_input(original, signal_time)
+    later_slice = _causal_policy_input(later_rows, signal_time)
+
+    assert original_slice.identity_hash == later_slice.identity_hash
+    assert all(data.perpetual.index.max() < pd.Timestamp(signal_time) for data in later_slice.instruments.values())
 
 
-def test_restarted_attribution_accepts_new_rows_after_the_signal_time(tmp_path) -> None:
-    class Adapter:
-        def __init__(self, canonical: CanonicalDataset) -> None:
-            self.canonical = canonical
+def test_exporting_prepared_attribution_input_transfers_it_once() -> None:
+    backend = object.__new__(ProductionPolicyBackend)
+    backend._attribution_inputs = {"input-1": b"exact prepared input"}
 
-        def load(self) -> CanonicalDataset:
-            return self.canonical
-
-    class Backend:
-        def paper(self, *args: Any, **kwargs: Any) -> SimpleNamespace:
-            del args, kwargs
-            return SimpleNamespace(
-                refitted=False,
-                model_bytes=b"selected-policy",
-                target_weights=dict.fromkeys(TICKERS, 0.0),
-            )
-
-    original = canonical_policy_input(periods=3)
-    appended = canonical_policy_input(periods=6)
-    selected = b"selected-policy"
-    config = load_config("policy.toml")
-    current = dict.fromkeys(TICKERS, 0.0)
-    decision_backend = ProductionPolicyBackend(
-        adapter=Adapter(original),
-        backend=Backend(),
-        fitting_adapter=Adapter(original),
-        attribution_adapter=Adapter(original),
-        checkpoint_directory=tmp_path,
-        config=config,
-        device="cpu",
-        fitted_model=selected,
-        fitting_backend=Backend(),
-    )
-    decision = decision_backend.decide(observation(0, decision=True), current)
-    resumed = ProductionPolicyBackend(
-        adapter=Adapter(appended),
-        backend=Backend(),
-        fitting_adapter=Adapter(appended),
-        attribution_adapter=Adapter(appended),
-        fitting_backend=Backend(),
-        checkpoint_directory=tmp_path,
-        config=config,
-        device="cpu",
-        fitted_model=selected,
-    )
-
-    canonical, _, _, _ = resumed._recover_attribution_input(
-        {
-            "signal_time": observation(0).timestamp.isoformat(),
-            "current_portfolio": current,
-            "model_id": decision.model_id,
-            "input_id": decision.input_id,
-        }
-    )
-
-    assert max(data.perpetual.index.max() for data in canonical.instruments.values()) < pd.Timestamp(
-        observation(0).timestamp
-    )
+    assert backend.export_attribution_input("input-1") == b"exact prepared input"
+    with pytest.raises(RuntimeError, match="exact prepared attribution input is unavailable"):
+        backend.export_attribution_input("input-1")
 
 
 def test_production_diagnostics_report_the_rocm_runtime(tmp_path, monkeypatch) -> None:

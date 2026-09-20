@@ -82,7 +82,23 @@ class _DashboardHandler(BaseHTTPRequestHandler):
                     "operating_window": {"started_at": "2026-08-23T16:02:00Z"},
                     "next_decision_at": "2026-08-23T18:45:00Z",
                     "pending_fill": None,
-                    "fitting": {"status": "Idle", "next_fit_at": "2026-08-25T17:00:00Z"},
+                    "hold_benchmark": {
+                        "equity": 10_088.0,
+                        "net_pnl": 88.0,
+                        "compounded_net_return": 0.0088,
+                        "maximum_drawdown": 0.012,
+                        "funding": -2.0,
+                        "gross_exposure": 0.5,
+                        "excess_pnl": 17.25,
+                        "excess_return": 0.001725,
+                    },
+                    "fitting": {
+                        "status": "failed",
+                        "attempt_count": 2,
+                        "next_retry_at": "2026-08-23T18:35:00Z",
+                        "last_successful_fit_at": "2026-08-20T18:00:00Z",
+                        "error": "provider unavailable",
+                    },
                     "recent_events": [
                         {
                             "id": "decision-1",
@@ -134,6 +150,22 @@ class _DashboardHandler(BaseHTTPRequestHandler):
                             "compounded_net_return": 0.010525,
                             "decisions": 18,
                             "executable_changes": 5,
+                            "hold_benchmark": {
+                                "equity": 10_088.0,
+                                "net_pnl": 88.0,
+                                "compounded_net_return": 0.0088,
+                                "maximum_drawdown": 0.012,
+                                "funding": -2.0,
+                                "gross_exposure": 0.5,
+                                "excess_pnl": 17.25,
+                                "excess_return": 0.001725,
+                            },
+                            "transaction_cost": 11.25,
+                            "funding": -3.0,
+                            "turnover": 22_400,
+                            "gross_exposure": 0.5,
+                            "below_threshold": 9,
+                            "missed_executions": 1,
                         }
                     ],
                     "events": [
@@ -153,8 +185,20 @@ class _DashboardHandler(BaseHTTPRequestHandler):
             self._json(
                 {
                     "market_feed": {"status": "Fresh", "provider": "Binance USD-M"},
-                    "policy": {"protocol_id": "net-growth-v1", "model_id": "fit-2026-08-18"},
-                    "fitting": {"status": "Idle", "device": "ROCm"},
+                    "policy": {
+                        "protocol_id": "net-growth-v1",
+                        "model_id": "fit-2026-08-18",
+                        "fitted_at": "2026-08-20T18:00:00Z",
+                        "age_seconds": 12_600,
+                    },
+                    "fitting": {
+                        "status": "failed",
+                        "attempt_count": 2,
+                        "next_retry_at": "2026-08-23T18:35:00Z",
+                        "last_successful_fit_at": "2026-08-20T18:00:00Z",
+                        "error": "provider unavailable",
+                    },
+                    "revision": {"status": "candidate_ready", "candidate_protocol_id": "net-growth-v2"},
                     "operating_windows": [{"started_at": "2026-08-23T16:02:00Z", "ended_at": None}],
                     "notifications": {"status": "Available", "last_delivery_at": None},
                     "database": {"status": "Healthy", "wal": True},
@@ -197,6 +241,7 @@ class _DashboardHandler(BaseHTTPRequestHandler):
                             "equity": 10_100,
                             "cash_benchmark": 10_000,
                             "equal_weight_benchmark": 10_080,
+                            "hold_benchmark": {"equity": 10_085.0},
                             "drawdown": 0.003,
                             "gross_exposure": 0.45,
                             "net_exposure": 0.05,
@@ -206,6 +251,7 @@ class _DashboardHandler(BaseHTTPRequestHandler):
                             "equity": 10_105.25,
                             "cash_benchmark": 10_000,
                             "equal_weight_benchmark": 10_082,
+                            "hold_benchmark": {"equity": 10_088.0},
                             "drawdown": 0.004,
                             "gross_exposure": 0.5,
                             "net_exposure": 0.1,
@@ -325,6 +371,9 @@ def test_dashboard_startup_navigation_marker_detail_and_control_wiring(
 
         playwright.expect(page.get_by_role("heading", name="Paper account")).to_be_visible()
         playwright.expect(page.get_by_text("$10,105.25", exact=True).first).to_be_visible()
+        playwright.expect(page.get_by_text("Hold benchmark", exact=True).first).to_be_visible()
+        playwright.expect(page.get_by_text("$17.25", exact=True).first).to_be_visible()
+        playwright.expect(page.get_by_text("Attempt 2", exact=False)).to_be_visible()
 
         chart = page.locator("#financial-chart")
         playwright.expect(
@@ -343,10 +392,14 @@ def test_dashboard_startup_navigation_marker_detail_and_control_wiring(
         playwright.expect(page.get_by_text("BTC target increased", exact=True).first).to_be_visible()
         playwright.expect(page.get_by_text("Paper account 6", exact=True)).to_be_visible()
         playwright.expect(page.get_by_text("-1.50%", exact=True)).to_be_visible()
+        playwright.expect(page.get_by_text("Hold 0.88%", exact=False)).to_be_visible()
+        playwright.expect(page.get_by_text("Below threshold 9", exact=False)).to_be_visible()
 
         page.get_by_role("tab", name="System").click()
         playwright.expect(page.get_by_role("heading", name="System health")).to_be_visible()
         playwright.expect(page.get_by_text("net-growth-v1", exact=True)).to_be_visible()
+        playwright.expect(page.get_by_text("Model age", exact=True)).to_be_visible()
+        playwright.expect(page.get_by_text("Candidate Ready", exact=True)).to_be_visible()
 
         page.goto(f"{base_url}/history")
         playwright.expect(page.get_by_role("heading", name="Account history")).to_be_visible()

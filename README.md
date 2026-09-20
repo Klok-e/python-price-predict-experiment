@@ -47,10 +47,21 @@ historical bid/ask fills. Fresh policy execution retains the 60-second Decision 
 adverse all-in Transaction Cost, No Leverage and concentration constraints, and the 20% Drawdown
 Limit.
 
+Eligibility for an ordinary portfolio change is determined at Signal Time using the 1% turnover
+threshold. Below-threshold decisions complete immediately. Qualifying decisions retain eligibility
+at their delayed fresh-price fill, subject to expiry and risk controls.
+
+For an existing account using the earlier rule, follow the
+[validated revision procedure](docs/paper-policy-revision.md). This preserves the account and starts
+a forward Hold Benchmark at the recorded revision boundary.
+
 ## Unattended user service
 
 The checked-in user unit executes the already synchronized environment directly and does not launch
-a browser or synchronize dependencies:
+a browser or synchronize dependencies. Install the validated bundle at
+`computed-data/paper-dashboard/active-revision.json` before starting this unit; see the
+[revision procedure](docs/paper-policy-revision.md).
+
 
 ```bash
 systemctl --user link "$PWD/systemd/netgrowth-paper-dashboard.service"

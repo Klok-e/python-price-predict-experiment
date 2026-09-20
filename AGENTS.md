@@ -1,6 +1,6 @@
 # Overview
 
-This repository is a Python cryptocurrency price-prediction experiment.
+This repository is a Python cryptocurrency price-prediction experiment. Backwards compatibility is not important, we are experimenting. Service outages are unimportant, as this is an experiment.
 
 ## Experiments
 Write experiments to @experiment_log.md.

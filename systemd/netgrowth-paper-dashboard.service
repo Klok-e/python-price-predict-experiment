@@ -8,7 +8,7 @@ StartLimitBurst=3
 [Service]
 Type=simple
 WorkingDirectory=%h/Desktop/python-price-predict-experiment
-ExecStart=%h/Desktop/python-price-predict-experiment/.venv/bin/netgrowth serve --device cuda --host 127.0.0.1 --port 8765
+ExecStart=%h/Desktop/python-price-predict-experiment/.venv/bin/netgrowth serve --device cuda --host 127.0.0.1 --port 8765 --revision-bundle %h/Desktop/python-price-predict-experiment/computed-data/paper-dashboard/active-revision.json
 Restart=on-failure
 RestartSec=15s
 Environment=MIOPEN_LOG_LEVEL=0

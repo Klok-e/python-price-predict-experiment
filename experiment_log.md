@@ -272,3 +272,98 @@ Routine infrastructure tests are not experiments.
   `beb8b5a5-1248-40fa-b180-8e07bd3871af`. Agent-browser verified Live, History, System, the exact
   record, and its approximate post-hoc attribution through the restarted unit; browser console and
   page-error logs were empty, and the isolated session was closed.
+
+
+## 2026-09-20 — Signal-Time eligibility and Paper Account reliability
+
+- Hypothesis: determining eligibility at Signal Time makes Decision Records and delayed execution
+  consistent, while durable operational recovery keeps the last successful policy available.
+- Scope: scheduled fitting retries at 5/15/30/60-minute capped intervals; immutable model age;
+  Signal-Time eligibility shared by paper and replay and reflected in differentiable training;
+  staged, validated in-account revision; forward same-position Hold Benchmark; asynchronous
+  notification retry; exact retained attribution inputs; Operating Window integrity annotations.
+- Training protocol: incumbent architecture and configured three seeds/eight training epochs;
+  twelve chronological 90-day folds with seven-day purge and weekly prequential fitting. No new
+  architecture search or Historical Holdout. Prior consumed holdout remains Development Evidence.
+- Isolation: implementation and evaluation use a separate checkout. The installed service, live
+  source files, account database, model, and positions have not been deployed or restarted.
+- Migration proof: a SQLite backup of account `11024fa6-7ead-468e-b603-27ce0e04a7ab`
+  migrated with its 42,699 events, exact equity, and quantities unchanged. A pre-migration backup
+  was created. Two existing invalid Operating Windows are annotated without rewriting their
+  historical timestamps. This was a copied database, not the running account.
+- Recovery proof: regressions cover retry deadlines across restart, below-threshold completion,
+  qualified delayed fills, activation transaction rollback, risk-stop/reset/restart during staged
+  revision, retained checkpoint lookup after later handoff, and bootstrap evidence/model identity.
+  A real prepared-input and model round-trip reproduces attribution after provider corrections and
+  restart without loading provider data; successful completion releases only its payload. Injected
+  faulty provider-reload behavior was rejected by the new test. Invalid revision evidence was
+  rejected, including in a failure-injection check that bypassed the shared gate.
+- Browser proof: an isolated fixture on localhost showed Hold equity/excess return, model age,
+  retry attempts/deadline, and revision status in Live/History/System, with no browser errors.
+  This checks rendering, not the running production account. Browser session and fixture stopped.
+- Deployment: separate authorization; see `docs/paper-policy-revision.md`.
+- Local checks: `158 passed, 1 skipped, 14` third-party Torch deprecation warnings; Ruff format/check, strict mypy, offline lockfile check, and diff check passed. The optional Playwright browser test is skipped because Playwright is absent; isolated agent-browser checks ran separately. Final read-only review found no remaining findings.
+- Policy Protocol: `18926cd1c98dc2f7ea050813cbb2e734608965b73d42cf03043dfab17c206141`. Dataset identity: `6557b79293d8498363d1146331e420dd159f912fd01359d5dac7d03ffb478f28`.
+- Walk-Forward Compounded Net Return: **26.488766%**; worst-fold Maximum
+  Drawdown: **7.512272%**. The twelve-fold validation gate passed.
+- Candidate: `1c515b194d01787d3bbddf7cf1a05cf815ca87332e89502bcc6737b5bbaf3896`; incumbent architecture retained
+  (three temporal-convolution members, width 64, seven-day receptive field). Checkpoint checksum,
+  strict model restoration, and inference on retained archive features passed; resulting weights
+  were finite and respected gross and per-instrument exposure constraints.
+- Candidate fitted at `2026-09-20T11:55:59.053619+00:00` with training observations through
+  `2026-08-04T00:00:00+00:00`. This is an archive-data candidate, not a claim
+  of current-market readiness. Refresh data and prepare again before later activation.
+- Final verdict: reliability implementation and local verification complete; historical validation
+  gate passed. Hold outperformance is a forward diagnostic and is not yet observed for this
+  revision. No live deployment, service restart, or production candidate activation was performed.
+
+| Fold | Net return | Maximum drawdown |
+| --- | ---: | ---: |
+| 1 | 4.4888% | 1.7227% |
+| 2 | 11.5289% | 6.8334% |
+| 3 | 9.0758% | 4.1153% |
+| 4 | 0.4930% | 4.2847% |
+| 5 | 1.4763% | 2.0360% |
+| 6 | 0.2659% | 2.2289% |
+| 7 | -0.4468% | 1.4121% |
+| 8 | 3.2262% | 2.4483% |
+| 9 | 1.7003% | 7.5123% |
+| 10 | -4.5805% | 5.0668% |
+| 11 | -1.1974% | 4.7456% |
+| 12 | -1.2267% | 3.5261% |
+
+### Main working tree integration
+
+Following explicit authorization to stop the service, stopped
+`netgrowth-paper-dashboard.service` and verified `ActiveState=inactive`, `SubState=dead`,
+`MainPID=0`. Applied the implementation to the main project working tree, preserving existing
+local documentation edits and leaving the operational database and checkpoints unchanged.
+All 22 changed code/test files match the reviewed isolated implementation byte-for-byte.
+Verification in the main checkout: **158 passed, 1 skipped, 14** third-party Torch warnings;
+Ruff check/format, mypy, offline lockfile check, and diff check passed. The service remains
+stopped. No candidate activation was performed; current data refresh is still required before
+production activation. The isolated checkout is retained only as source/evaluation evidence.
+
+### Authorized live deployment — 2026-09-20
+
+Deployed the revision to the existing Paper Account after an explicit deployment request.
+Candidate training data is refreshed through September 19 (Signal-Time cutoff September 20
+00:00 UTC), with exact historical-input equivalence permitting reuse of all twelve passing
+folds. Full provenance and acceptance evidence are in
+`computed-data/deployment-20260920/README.md`.
+
+The account identity, activation positions, and all 42,772 prior events were preserved.
+The new model is `9b80b8f152d00b561bbae130490a8fd05badda7eeddfe2271e0b02d8e9219f65`;
+revision `18926cd1c98dc2f7ea050813cbb2e734608965b73d42cf03043dfab17c206141`
+activated once at 12:28:46 UTC. Hold started at $10,153.597106 with identical positions.
+The first new decision completed below threshold; its retained-input attribution completed
+and released the input payload.
+
+Live restart testing exposed and fixed startup preparation lock contention. A regression
+reproduced the API timeout before the fix; both final preparation tests pass. Full suite
+passed 159 tests with one optional browser skip; the second new preparation test was added
+after full-suite collection and passed in the focused two-test run. Lint, formatting, mypy,
+diff checks, and unit verification passed. Live API/browser verification confirmed fresh
+marks, healthy notifications, active Hold comparison, and responsive reads during preparation.
+The service is enabled and running with its persistent validated-bundle argument. No temporary
+bootstrap override remains. User edits to AGENTS.md were preserved.

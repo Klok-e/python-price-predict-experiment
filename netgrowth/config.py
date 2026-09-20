@@ -76,6 +76,7 @@ class PolicyConfig:
             "execution": {
                 "transaction_cost_rate": self.transaction_cost_rate,
                 "minimum_turnover": self.minimum_turnover,
+                "eligibility": "signal-time-v2",
                 "initial_equity": self.initial_equity,
             },
             "risk": {
@@ -110,7 +111,7 @@ class PolicyConfig:
             "trading_universe": list(self.tickers),
             "account_currency": self.account_currency,
             "position_semantics": "signed-perpetual-target-weights-v1",
-            "execution_semantics": "delayed-midpoint-adverse-cost-v1",
+            "execution_semantics": "signal-time-eligibility-delayed-midpoint-v2",
             "risk_semantics": "marked-equity-no-leverage-drawdown-stop-v1",
         }
 

@@ -6,19 +6,22 @@ import json
 import sqlite3
 from collections.abc import Iterable
 from contextlib import AbstractContextManager
+from copy import deepcopy
 from dataclasses import asdict
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from enum import Enum
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Self
 from uuid import uuid4
 
-from netgrowth.accounting import AccountAccounting, AverageCostPosition, PassiveBenchmarks
+from netgrowth.accounting import AccountAccounting, AverageCostPosition, HoldBenchmark, PassiveBenchmarks
 from netgrowth.simulation import SimulationState
 
 from .domain import AccountEvent, DataStatus, LifecycleState, PaperAccountState, PendingExecution
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+_NOTIFICATION_RETRY_DELAYS = (5, 15, 30, 60)
 
 
 class StateVersionConflict(RuntimeError):
@@ -64,8 +67,9 @@ class SQLitePaperStore(AbstractContextManager["SQLitePaperStore"]):
     def _migrate(self, current: int) -> None:
         if current > SCHEMA_VERSION:
             raise RuntimeError(f"database schema {current} is newer than supported schema {SCHEMA_VERSION}")
-        self._connection.executescript(
-            """
+        if current == 0:
+            self._connection.executescript(
+                """
             BEGIN IMMEDIATE;
             CREATE TABLE IF NOT EXISTS accounts (
                 account_id TEXT PRIMARY KEY,
@@ -126,7 +130,35 @@ class SQLitePaperStore(AbstractContextManager["SQLitePaperStore"]):
             PRAGMA user_version = 1;
             COMMIT;
             """
-        )
+            )
+            current = 1
+        if current == 1:
+            self._connection.executescript(
+                """
+                BEGIN IMMEDIATE;
+                ALTER TABLE notification_outbox ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE notification_outbox ADD COLUMN failure_count INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE notification_outbox ADD COLUMN last_attempt_at TEXT;
+                ALTER TABLE notification_outbox ADD COLUMN next_attempt_at TEXT;
+                UPDATE notification_outbox
+                   SET next_attempt_at = created_at
+                 WHERE delivered_at IS NULL AND next_attempt_at IS NULL;
+                CREATE TABLE attribution_inputs (
+                    input_id TEXT PRIMARY KEY,
+                    decision_id TEXT NOT NULL UNIQUE,
+                    account_id TEXT NOT NULL REFERENCES accounts(account_id),
+                    model_id TEXT NOT NULL,
+                    input_hash TEXT NOT NULL,
+                    payload BLOB,
+                    created_at TEXT NOT NULL,
+                    released_at TEXT
+                );
+                CREATE INDEX attribution_inputs_account_decision
+                    ON attribution_inputs(account_id, decision_id);
+                PRAGMA user_version = 2;
+                COMMIT;
+                """
+            )
 
     def open_active_account(
         self,
@@ -200,9 +232,11 @@ class SQLitePaperStore(AbstractContextManager["SQLitePaperStore"]):
         operating_window: tuple[str, datetime, datetime | None] | None = None,
         close_window: tuple[str, datetime, str] | None = None,
         notifications: Iterable[tuple[str, str, dict[str, Any], datetime]] = (),
+        attribution_inputs: Iterable[tuple[str, str, str, str, bytes, datetime]] = (),
     ) -> list[AccountEvent]:
         """Atomically append events and the corresponding versioned recovery snapshot."""
         events = list(new_events)
+        durable_attribution_inputs = list(attribution_inputs)
         if not events:
             raise ValueError("an account transition requires at least one durable event")
         if state.state_version != expected_state_version + 1:
@@ -226,7 +260,8 @@ class SQLitePaperStore(AbstractContextManager["SQLitePaperStore"]):
                     "SELECT window_id, started_at FROM operating_windows WHERE ended_at IS NULL"
                 ).fetchone()
                 if previous is not None:
-                    boundary = detected_end or datetime.fromisoformat(str(previous["started_at"]))
+                    previous_started = datetime.fromisoformat(str(previous["started_at"]))
+                    boundary = max(detected_end or previous_started, previous_started)
                     self._connection.execute(
                         """UPDATE operating_windows
                            SET ended_at = ?, close_reason = 'detected-restart'
@@ -304,19 +339,56 @@ class SQLitePaperStore(AbstractContextManager["SQLitePaperStore"]):
                     "INSERT INTO idempotency VALUES (?, ?, ?, ?, ?)",
                     (key, action, request_hash, _json(response), _timestamp(created_at)),
                 )
-            for dedupe_key, kind, payload, created_at in notifications:
+            for dedupe_key, kind, notification_payload, created_at in notifications:
                 self._connection.execute(
                     """INSERT OR IGNORE INTO notification_outbox(
-                           notification_id, account_id, dedupe_key, kind, payload, created_at
-                       ) VALUES (?, ?, ?, ?, ?, ?)""",
+                           notification_id, account_id, dedupe_key, kind, payload, created_at, next_attempt_at
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
                     (
                         str(uuid4()),
                         state.account_id,
                         dedupe_key,
                         kind,
-                        _json(payload),
+                        _json(notification_payload),
+                        _timestamp(created_at),
                         _timestamp(created_at),
                     ),
+                )
+            decision_ids = {
+                decision_id
+                for event_type, _, _, decision_id, _ in events
+                if event_type == "DecisionRecord" and decision_id is not None
+            }
+            for input_id, decision_id, model_id, input_hash, input_payload, created_at in durable_attribution_inputs:
+                if decision_id not in decision_ids:
+                    raise ValueError("durable attribution input requires its Decision Record in the same commit")
+                if sha256(input_payload).hexdigest() != input_hash:
+                    raise ValueError("durable attribution input hash does not match its payload")
+                self._connection.execute(
+                    """INSERT INTO attribution_inputs(
+                           input_id, decision_id, account_id, model_id, input_hash, payload, created_at
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        input_id,
+                        decision_id,
+                        state.account_id,
+                        model_id,
+                        input_hash,
+                        sqlite3.Binary(input_payload),
+                        _timestamp(created_at),
+                    ),
+                )
+            completed_attributions = {
+                decision_id
+                for event_type, _, _, decision_id, _ in events
+                if event_type == "ModelAttribution" and decision_id is not None
+            }
+            for decision_id in completed_attributions:
+                self._connection.execute(
+                    """UPDATE attribution_inputs
+                       SET payload = NULL, released_at = ?
+                       WHERE account_id = ? AND decision_id = ? AND payload IS NOT NULL""",
+                    (_timestamp(datetime.now(tz=UTC)), state.account_id, decision_id),
                 )
             self._connection.execute("COMMIT")
         except BaseException:
@@ -349,13 +421,19 @@ class SQLitePaperStore(AbstractContextManager["SQLitePaperStore"]):
         return [dict(row) for row in self._connection.execute("SELECT * FROM accounts ORDER BY created_at")]
 
     def operating_windows(self, account_id: str) -> list[dict[str, Any]]:
-        return [
-            dict(row)
-            for row in self._connection.execute(
-                "SELECT * FROM operating_windows WHERE account_id = ? ORDER BY started_at",
-                (account_id,),
-            )
-        ]
+        windows: list[dict[str, Any]] = []
+        for row in self._connection.execute(
+            "SELECT * FROM operating_windows WHERE account_id = ? ORDER BY started_at",
+            (account_id,),
+        ):
+            window = dict(row)
+            started_at = datetime.fromisoformat(str(window["started_at"]))
+            ended_at = window["ended_at"]
+            invalid_timing = ended_at is not None and datetime.fromisoformat(str(ended_at)) < started_at
+            window["timing_valid"] = not invalid_timing
+            window["timing_error"] = "ended_before_started" if invalid_timing else None
+            windows.append(window)
+        return windows
 
     def idempotent_response(self, key: str, action: str, request_hash: str) -> dict[str, Any] | None:
         row = self._connection.execute(
@@ -394,37 +472,72 @@ class SQLitePaperStore(AbstractContextManager["SQLitePaperStore"]):
     ) -> bool:
         cursor = self._connection.execute(
             """INSERT OR IGNORE INTO notification_outbox(
-                   notification_id, account_id, dedupe_key, kind, payload, created_at
-               ) VALUES (?, ?, ?, ?, ?, ?)""",
-            (str(uuid4()), account_id, dedupe_key, kind, _json(payload), _timestamp(now)),
+                   notification_id, account_id, dedupe_key, kind, payload, created_at, next_attempt_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (str(uuid4()), account_id, dedupe_key, kind, _json(payload), _timestamp(now), _timestamp(now)),
         )
         return cursor.rowcount == 1
 
-    def pending_notifications(self) -> list[dict[str, Any]]:
+    def pending_notifications(self, now: datetime | None = None) -> list[dict[str, Any]]:
+        due_at = _timestamp(now or datetime.now(tz=UTC))
         return [
             dict(row)
             for row in self._connection.execute(
                 """SELECT * FROM notification_outbox
-                   WHERE delivered_at IS NULL AND error IS NULL ORDER BY created_at"""
+                   WHERE delivered_at IS NULL
+                     AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+                   ORDER BY next_attempt_at, created_at""",
+                (due_at,),
             )
         ]
 
     def mark_notification(self, notification_id: str, now: datetime, error: str | None) -> None:
+        if error is None:
+            self._connection.execute(
+                """UPDATE notification_outbox
+                   SET delivered_at = ?, error = NULL, last_attempt_at = ?, next_attempt_at = NULL,
+                       attempt_count = attempt_count + 1
+                   WHERE notification_id = ?""",
+                (_timestamp(now), _timestamp(now), notification_id),
+            )
+            return
+        row = self._connection.execute(
+            "SELECT attempt_count FROM notification_outbox WHERE notification_id = ?",
+            (notification_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(notification_id)
+        attempt_count = int(row["attempt_count"]) + 1
+        delay = _NOTIFICATION_RETRY_DELAYS[min(attempt_count - 1, len(_NOTIFICATION_RETRY_DELAYS) - 1)]
+        next_attempt = now + timedelta(minutes=delay)
         self._connection.execute(
-            "UPDATE notification_outbox SET delivered_at = ?, error = ? WHERE notification_id = ?",
-            (_timestamp(now) if error is None else None, error, notification_id),
+            """UPDATE notification_outbox
+               SET error = ?, last_attempt_at = ?, next_attempt_at = ?,
+                   attempt_count = ?, failure_count = failure_count + 1
+               WHERE notification_id = ?""",
+            (error, _timestamp(now), _timestamp(next_attempt), attempt_count, notification_id),
         )
 
     def notification_health(self) -> dict[str, Any]:
         failed = self._connection.execute(
             """SELECT kind, created_at, error FROM notification_outbox
-               WHERE error IS NOT NULL ORDER BY created_at DESC LIMIT 1"""
+               WHERE delivered_at IS NULL AND error IS NOT NULL
+               ORDER BY last_attempt_at DESC, created_at DESC LIMIT 1"""
         ).fetchone()
         pending = int(
             self._connection.execute(
                 """SELECT count(*) FROM notification_outbox
-                   WHERE delivered_at IS NULL AND error IS NULL"""
+                   WHERE delivered_at IS NULL"""
             ).fetchone()[0]
+        )
+        retrying = int(
+            self._connection.execute(
+                """SELECT count(*) FROM notification_outbox
+                   WHERE delivered_at IS NULL AND error IS NOT NULL"""
+            ).fetchone()[0]
+        )
+        historical_failures = int(
+            self._connection.execute("SELECT coalesce(sum(failure_count), 0) FROM notification_outbox").fetchone()[0]
         )
         return {
             "healthy": failed is None,
@@ -432,7 +545,27 @@ class SQLitePaperStore(AbstractContextManager["SQLitePaperStore"]):
             "failed_kind": str(failed["kind"]) if failed is not None else None,
             "failed_at": str(failed["created_at"]) if failed is not None else None,
             "pending": pending,
+            "retrying": retrying,
+            "historical_failures": historical_failures,
         }
+
+    def attribution_input(self, input_id: str) -> dict[str, Any]:
+        """Return a durable exact input while attribution is pending or failed."""
+        row = self._connection.execute(
+            "SELECT * FROM attribution_inputs WHERE input_id = ?",
+            (input_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(input_id)
+        result = dict(row)
+        payload = result["payload"]
+        if payload is None:
+            raise RuntimeError("durable attribution input was released after successful completion")
+        payload_bytes = bytes(payload)
+        if sha256(payload_bytes).hexdigest() != str(result["input_hash"]):
+            raise RuntimeError("durable attribution input hash differs from its persisted payload")
+        result["payload"] = payload_bytes
+        return result
 
     def create_daily_backup(self, now: datetime) -> Path | None:
         prefix = f"paper-{now.date().isoformat()}"
@@ -488,6 +621,12 @@ class SQLitePaperStore(AbstractContextManager["SQLitePaperStore"]):
         replacement.protocol_id = state.protocol_id
         replacement.model_id = state.model_id
         replacement.model_checkpoint = state.model_checkpoint
+        replacement.model_fitted_at = state.model_fitted_at
+        replacement.revision = deepcopy(state.revision)
+        if state.hold_benchmark is not None:
+            replacement.hold_benchmark = HoldBenchmark.start(
+                starting_equity, replacement.simulation.quantities, state.simulation.previous_marks or {}
+            )
         replacement.compatibility_manifest = state.compatibility_manifest.copy()
         replacement.proposed_protocol_id = state.proposed_protocol_id
         replacement.proposed_compatibility_manifest = state.proposed_compatibility_manifest.copy()
@@ -677,6 +816,8 @@ def _state_from_payload(raw: dict[str, Any]) -> PaperAccountState:
     raw["accounting"] = AccountAccounting(**accounting)
     if raw.get("benchmarks") is not None:
         raw["benchmarks"] = PassiveBenchmarks(**raw["benchmarks"])
+    if raw.get("hold_benchmark") is not None:
+        raw["hold_benchmark"] = HoldBenchmark(**raw["hold_benchmark"])
     pending = raw.get("pending_execution")
     if pending is not None:
         for name in ("signal_time", "eligible_at", "expires_at"):

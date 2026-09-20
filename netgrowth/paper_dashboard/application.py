@@ -8,7 +8,7 @@ import inspect
 import json
 import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
 from copy import deepcopy
 from dataclasses import asdict, dataclass
@@ -24,13 +24,14 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
-from netgrowth.accounting import PassiveBenchmarks
+from netgrowth.accounting import HoldBenchmark, PassiveBenchmarks
 from netgrowth.simulation import (
     MarketMinute,
     PendingPortfolioChange,
     SimulationConfig,
     advance_simulation,
     marked_weights,
+    schedule_portfolio_change,
 )
 
 from .domain import (
@@ -43,9 +44,11 @@ from .domain import (
     PendingExecution,
     PolicyDecision,
     SystemClock,
+    eligibility_revision_is_supported,
     policy_revision_is_compatible,
 )
 from .persistence import SQLitePaperStore, StateVersionConflict
+from .revision_evidence import validate_revision_evidence
 
 DEFAULT_TICKERS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT")
 KYIV_TIME_ZONE = ZoneInfo("Europe/Kiev")
@@ -160,7 +163,11 @@ class PaperDashboardApplication:
         self.csrf_token = secrets.token_urlsafe(32)
         self._owner_lock = RLock()
         self._closed = False
+        self._observed_in_window = False
+        self._policy_preparing = False
         self._fitting_task: asyncio.Task[None] | None = None
+        self._notification_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="paper-notifications")
+        self._notification_jobs: dict[str, Future[object]] = {}
         self._attribution_tasks: set[asyncio.Task[None]] = set()
         self._attribution_decisions: set[str] = set()
         self._pending_notifications: list[tuple[str, str, dict[str, Any], datetime]] = []
@@ -174,6 +181,12 @@ class PaperDashboardApplication:
         )
         now = self._now()
         self.state = self.store.open_active_account(now, tickers, starting_equity=starting_equity)
+        if self.state.model_fitted_at is None:
+            handoffs = [e for e in self.store.events(self.state.account_id) if e.event_type == "PolicyHandoff"]
+            if handoffs:
+                self.state.model_fitted_at = (
+                    handoffs[-1].payload.get("completed_at") or handoffs[-1].occurred_at.isoformat()
+                )
         self._check_daily_backup()
         prior_windows = self.store.operating_windows(self.state.account_id)
         detected_open_window = next(
@@ -245,6 +258,8 @@ class PaperDashboardApplication:
                 [("OperatingWindowClosed", now, {"window_id": self.window_id, "reason": "graceful"}, None, None)],
                 close_window=(self.window_id, now, "graceful"),
             )
+            self._notification_executor.shutdown(wait=True, cancel_futures=True)
+            self._collect_notifications()
             self._fitting_executor.shutdown(wait=True, cancel_futures=True)
             self._attribution_executor.shutdown(wait=True, cancel_futures=True)
             self.store.close()
@@ -400,6 +415,9 @@ class PaperDashboardApplication:
             funding_cashflow = simulation.funding_cashflow - prior_funding
             if abs(funding_cashflow) > 0.0:
                 self.state.accounting.apply_funding(funding_cashflow)
+            if self.state.hold_benchmark is not None:
+                self.state.hold_benchmark.apply_funding(observation.funding_rates, observation.funding_mark_prices)
+                self.state.hold_benchmark.mark(observation.mark_prices)
             if observation.funding_rates:
                 self.state.benchmarks.apply_funding(
                     observation.funding_rates,
@@ -435,6 +453,7 @@ class PaperDashboardApplication:
                         "candles": observation.candles,
                         "funding_cashflow": funding_cashflow,
                         "reconstructed": observation.reconstructed,
+                        "hold_benchmark": self._hold_snapshot(observation.mark_prices),
                         "cash_benchmark": benchmark_mark.cash_equity,
                         "equal_weight_benchmark": benchmark_mark.equal_weight_equity,
                         "net_exposure": account_snapshot.risk.net_exposure,
@@ -552,6 +571,8 @@ class PaperDashboardApplication:
                 and self.state.lifecycle is LifecycleState.TRADING
                 and self.state.last_decision_at != observation.timestamp
                 and self.state.pending_execution is None
+                and self.state.revision.get("status") != "draining"
+                and not self._policy_preparing
             ):
                 current_weights = marked_weights(simulation, observation.mark_prices, self.config.tickers)
                 supplied = self.policy_backend.decide(observation, current_weights)
@@ -579,8 +600,10 @@ class PaperDashboardApplication:
                 )
                 simulation.previous_timestamp = observation.timestamp
                 simulation.previous_marks = observation.mark_prices
-                simulation.pending = PendingPortfolioChange(eligible_at, decision.target_weights)
-                self.state.pending_execution = schedule
+                qualifies = schedule_portfolio_change(
+                    simulation, observation.timestamp, decision.target_weights, self.config
+                )
+                self.state.pending_execution = schedule if qualifies else None
                 self.state.last_decision_at = observation.timestamp
                 self.state.target_weights = decision.target_weights.copy()
                 events.append(
@@ -611,7 +634,8 @@ class PaperDashboardApplication:
                             "eligible_at": eligible_at,
                             "expires_at": schedule.expires_at,
                             "constraints": decision.constraints,
-                            "outcome": "pending",
+                            "outcome": "pending" if qualifies else "completed",
+                            "eligibility": "signal_time",
                             "attribution": {"status": "pending"},
                         },
                         decision_id,
@@ -619,7 +643,21 @@ class PaperDashboardApplication:
                     )
                 )
 
+            if events and events[-1][0] == "DecisionRecord" and self.state.pending_execution is None:
+                record = events[-1]
+                events.append(
+                    (
+                        "DecisionCompleted",
+                        observation.timestamp,
+                        {"decision_id": record[3], "outcome": record[2]["threshold_outcome"]},
+                        record[3],
+                        None,
+                    )
+                )
             self._commit(events)
+            if not observation.reconstructed:
+                self._observed_in_window = True
+                self._activate_staged_revision()
             if prior_pending is not None and prior_pending.kind == "reset" and self._is_flat():
                 self._complete_reset(observation.timestamp)
             self._deliver_notifications()
@@ -803,10 +841,16 @@ class PaperDashboardApplication:
             self.state.model_checkpoint = checkpoint
             if protocol_id is not None:
                 self.state.protocol_id = protocol_id
+            self.state.model_fitted_at = now.isoformat()
             self.state.fitting = {
-                **self.state.fitting,
                 "status": "idle",
+                "due_at": self.state.fitting.get("due_at"),
+                "started_at": self.state.fitting.get("started_at"),
                 "completed_at": now.isoformat(),
+                "last_successful_fit_at": now.isoformat(),
+                "attempt_count": 0,
+                "cycle_at": self.state.fitting.get("cycle_at"),
+                "next_retry_at": None,
             }
             self._commit(
                 [
@@ -834,6 +878,7 @@ class PaperDashboardApplication:
         *,
         model_id: str,
         checkpoint: str,
+        fitted_at: str | None = None,
     ) -> dict[str, Any]:
         """Select the bootstrap model without fabricating a completed weekly fit."""
         with self._owner_lock:
@@ -842,6 +887,7 @@ class PaperDashboardApplication:
             now = self._now()
             self.state.model_id = model_id
             self.state.model_checkpoint = checkpoint
+            self.state.model_fitted_at = fitted_at
             self._commit(
                 [
                     (
@@ -860,30 +906,33 @@ class PaperDashboardApplication:
             return self.system_snapshot()
 
     async def maybe_start_policy_fitting(self) -> None:
-        fitter = self.policy_fitter
-        if (
-            fitter is None
-            or self.state.last_observation_at is None
-            or self.state.lifecycle not in {LifecycleState.TRADING, LifecycleState.PAUSED}
-        ):
-            return
-        if self._fitting_task is not None and not self._fitting_task.done():
-            return
-        if any(not task.done() for task in self._attribution_tasks):
-            return
-        if self.state.fitting.get("status") == "running":
-            self.fail_policy_fitting("previous fitting was interrupted before Policy Handoff")
-        now = self._now()
-        if not fitter.is_due(now, self.state.fitting):
-            return
-        self.start_policy_fitting(due_at=now)
-        marks = self.state.simulation.previous_marks or dict.fromkeys(self.state.tickers, 0.0)
-        current_weights = marked_weights(self.state.simulation, marks, self.state.tickers)
-        observed_at = self.state.last_observation_at
-        self._fitting_task = asyncio.create_task(
-            self._run_policy_fitting(fitter, observed_at, current_weights),
-            name="paper-account-policy-fitting",
-        )
+        with self._owner_lock:
+            fitter = self.policy_fitter
+            if (
+                fitter is None
+                or self._policy_preparing
+                or self.state.last_observation_at is None
+                or self.state.lifecycle not in {LifecycleState.TRADING, LifecycleState.PAUSED}
+                or self.state.revision.get("status") == "draining"
+            ):
+                return
+            if self._fitting_task is not None and not self._fitting_task.done():
+                return
+            if any(not task.done() for task in self._attribution_tasks):
+                return
+            if self.state.fitting.get("status") == "running":
+                self.fail_policy_fitting("previous fitting was interrupted before Policy Handoff")
+            now = self._now()
+            if not fitter.is_due(now, self.state.fitting):
+                return
+            self.start_policy_fitting(due_at=now)
+            marks = self.state.simulation.previous_marks or dict.fromkeys(self.state.tickers, 0.0)
+            current_weights = marked_weights(self.state.simulation, marks, self.state.tickers)
+            observed_at = self.state.last_observation_at
+            self._fitting_task = asyncio.create_task(
+                self._run_policy_fitting(fitter, observed_at, current_weights),
+                name="paper-account-policy-fitting",
+            )
 
     async def _run_policy_fitting(
         self,
@@ -919,10 +968,18 @@ class PaperDashboardApplication:
             if self.state.fitting.get("status") == "running":
                 return self.system_snapshot()
             now = self._now()
+            retrying = self.state.fitting.get("status") == "failed"
+            prior = self.state.fitting
             self.state.fitting = {
                 "status": "running",
-                "due_at": due_at.astimezone(UTC).isoformat(),
+                "cycle_at": prior.get("cycle_at", prior.get("due_at"))
+                if retrying
+                else due_at.astimezone(UTC).isoformat(),
+                "due_at": prior.get("due_at") if retrying else due_at.astimezone(UTC).isoformat(),
                 "started_at": now.isoformat(),
+                "attempt_count": int(prior.get("attempt_count", 0)) + 1 if retrying else 1,
+                "last_successful_fit_at": self.state.model_fitted_at,
+                "next_retry_at": None,
             }
             self._commit([("PolicyFittingStarted", now, self.state.fitting.copy(), None, None)])
             return self.system_snapshot()
@@ -936,6 +993,14 @@ class PaperDashboardApplication:
                 "status": "failed",
                 "error": str(error),
                 "failed_at": now.isoformat(),
+                "attempt_count": max(1, int(self.state.fitting.get("attempt_count", 1))),
+                "last_successful_fit_at": self.state.model_fitted_at,
+                "next_retry_at": (
+                    now
+                    + timedelta(
+                        minutes=(5, 15, 30, 60)[min(3, max(0, int(self.state.fitting.get("attempt_count", 1)) - 1))]
+                    )
+                ).isoformat(),
             }
             self._queue_notification(
                 f"fitting-failed:{self.state.account_id}:{now.date().isoformat()}",
@@ -990,13 +1055,47 @@ class PaperDashboardApplication:
             raise RuntimeError("Decision Record lacks its durable decision identity")
         if decision_id in self._attribution_decisions:
             return
+        payload = decision.payload.copy()
+        try:
+            retained = self.store.attribution_input(input_id)
+        except KeyError:
+            retained = None
+        except RuntimeError as error:
+            self._commit(
+                [
+                    (
+                        "ModelAttributionFailed",
+                        self._now(),
+                        {"decision_id": decision_id, "error": str(error)},
+                        decision_id,
+                        None,
+                    )
+                ]
+            )
+            return
+        if retained is not None and retained.get("payload") is not None:
+            blob = retained["payload"]
+            if hashlib.sha256(blob).hexdigest() != retained["input_hash"]:
+                self._commit(
+                    [
+                        (
+                            "ModelAttributionFailed",
+                            self._now(),
+                            {"decision_id": decision_id, "error": "durable attribution input checksum mismatch"},
+                            decision_id,
+                            None,
+                        )
+                    ]
+                )
+                return
+            payload["_durable_attribution_input"] = blob
         self._attribution_decisions.add(decision_id)
         task = loop.create_task(
             self._run_attribution(
                 backend,
                 decision_id,
                 input_id,
-                decision.payload,
+                payload,
             ),
             name=f"paper-account-attribution-{decision_id}",
         )
@@ -1009,16 +1108,19 @@ class PaperDashboardApplication:
 
     def resume_pending_attributions(self) -> None:
         """Requeue durable Decision Records whose lower-priority explanation was interrupted."""
-        fitting_active = self._fitting_task is not None and not self._fitting_task.done()
-        if self.state.pending_execution is not None or fitting_active:
-            return
-        events = self.store.events(self.state.account_id)
-        terminal = {
-            event.decision_id for event in events if event.event_type in {"ModelAttribution", "ModelAttributionFailed"}
-        }
-        for event in events:
-            if event.event_type == "DecisionRecord" and event.decision_id not in terminal:
-                self._schedule_attribution(event)
+        with self._owner_lock:
+            fitting_active = self._fitting_task is not None and not self._fitting_task.done()
+            if self._policy_preparing or self.state.pending_execution is not None or fitting_active:
+                return
+            events = self.store.events(self.state.account_id)
+            terminal = {
+                event.decision_id
+                for event in events
+                if event.event_type in {"ModelAttribution", "ModelAttributionFailed"}
+            }
+            for event in events:
+                if event.event_type == "DecisionRecord" and event.decision_id not in terminal:
+                    self._schedule_attribution(event)
 
     def _finish_attribution_task(self, task: asyncio.Task[None], decision_id: str) -> None:
         self._attribution_tasks.discard(task)
@@ -1056,6 +1158,88 @@ class PaperDashboardApplication:
                     ]
                 )
 
+    def stage_policy_revision(
+        self,
+        *,
+        protocol_id: str,
+        compatibility: dict[str, Any],
+        candidate: FittedPolicyCandidate,
+        validation: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        with self._owner_lock:
+            if self.state.revision.get("status") != "draining" and self.state.lifecycle not in {
+                LifecycleState.TRADING,
+                LifecycleState.PAUSED,
+            }:
+                raise ValueError("Policy Revision requires a trading or paused account")
+            if self._fitting_task is not None and not self._fitting_task.done():
+                raise ValueError("Policy Revision cannot overlap fitting")
+            if not (
+                policy_revision_is_compatible(
+                    self.state.compatibility_manifest, compatibility, lifecycle=self.state.lifecycle
+                )
+                or eligibility_revision_is_supported(self.state.compatibility_manifest, compatibility)
+            ):
+                raise ValueError("unsupported Policy Revision migration")
+            validate_revision_evidence(
+                validation,
+                protocol_id=protocol_id,
+                model_id=candidate.model_id,
+                drawdown_limit=self.config.drawdown_limit,
+            )
+            blob = Path(candidate.checkpoint).read_bytes()
+            if hashlib.sha256(blob).hexdigest() != candidate.model_id:
+                raise ValueError("candidate checkpoint checksum mismatch")
+            if self.state.revision.get("status") == "draining":
+                if (
+                    self.state.revision.get("protocol_id") != protocol_id
+                    or self.state.revision.get("model_id") != candidate.model_id
+                ):
+                    raise ValueError("another Policy Revision is already draining")
+                self._activate_staged_revision()
+                return self.system_snapshot()
+            if self.state.simulation.previous_marks is None:
+                raise ValueError("Policy Revision requires an observed account valuation")
+            self.state.revision = {
+                "status": "draining",
+                "protocol_id": protocol_id,
+                "compatibility": compatibility,
+                "model_id": candidate.model_id,
+                "checkpoint": str(Path(candidate.checkpoint).resolve()),
+                "validation": {**validation, "checkpoint": str(Path(candidate.checkpoint).resolve())},
+                "requested_at": self._now().isoformat(),
+            }
+            self._commit([("PolicyRevisionStaged", self._now(), self.state.revision.copy(), None, None)])
+            self._activate_staged_revision()
+            return self.system_snapshot()
+
+    def _activate_staged_revision(self) -> None:
+        if (
+            self._policy_preparing
+            or self.state.revision.get("status") != "draining"
+            or self.state.pending_execution is not None
+        ):
+            return
+        if self.state.lifecycle not in {LifecycleState.TRADING, LifecycleState.PAUSED}:
+            return
+        if (
+            not self._observed_in_window
+            or self.state.last_observation_at is None
+            or self.state.data_status is not DataStatus.FRESH
+            or self._now() - self.state.last_observation_at > timedelta(minutes=2)
+        ):
+            return
+        staged = self.state.revision.copy()
+        blob = Path(staged["checkpoint"]).read_bytes()
+        if hashlib.sha256(blob).hexdigest() != staged["model_id"]:
+            raise ValueError("staged checkpoint checksum mismatch")
+        self.register_policy_revision(
+            protocol_id=staged["protocol_id"],
+            compatibility=staged["compatibility"],
+            fitted_policy=FittedPolicyCandidate(staged["model_id"], staged["checkpoint"], blob),
+            validated_transition=True,
+        )
+
     def register_policy_revision(
         self,
         *,
@@ -1063,6 +1247,7 @@ class PaperDashboardApplication:
         compatibility: dict[str, Any],
         fitted_policy: FittedPolicyCandidate | None = None,
         model_compatibility: Mapping[str, Any] | None = None,
+        validated_transition: bool = False,
     ) -> dict[str, Any]:
         with self._owner_lock:
             now = self._now()
@@ -1071,6 +1256,12 @@ class PaperDashboardApplication:
                 compatibility,
                 lifecycle=self.state.lifecycle,
             )
+            if validated_transition:
+                if self.state.revision.get("status") != "draining" or self.state.pending_execution is not None:
+                    raise ValueError("revision activation requires a drained staged candidate")
+                compatible = compatible or eligibility_revision_is_supported(
+                    self.state.compatibility_manifest, compatibility
+                )
             if compatible:
                 revision_changed = (
                     self.state.protocol_id != protocol_id or self.state.compatibility_manifest != compatibility
@@ -1090,6 +1281,7 @@ class PaperDashboardApplication:
                     raise RuntimeError("a compatible Policy Revision must provide active-model compatibility evidence")
                 if compatibility_evidence is not None and compatibility_evidence.get("model_id") != old_model_id:
                     raise ValueError("model compatibility evidence does not identify the active Fitted Policy")
+                before_activation = deepcopy(self.state)
                 rollback: Callable[[], None] | None = None
                 if model_changed:
                     if self.policy_fitter is None or fitted_policy is None:
@@ -1100,6 +1292,17 @@ class PaperDashboardApplication:
                     self.state.compatibility_manifest = compatibility.copy()
                     self.state.proposed_protocol_id = None
                     self.state.proposed_compatibility_manifest = {}
+                    if validated_transition:
+                        self.state.hold_benchmark = HoldBenchmark.start(
+                            self.state.simulation.equity,
+                            self.state.simulation.quantities,
+                            self.state.simulation.previous_marks or {},
+                        )
+                        self.state.revision = {
+                            **self.state.revision,
+                            "status": "active",
+                            "activated_at": now.isoformat(),
+                        }
                     events: list[tuple[str, datetime, dict[str, Any], str | None, str | None]] = []
                     if revision_changed:
                         events.append(
@@ -1111,6 +1314,8 @@ class PaperDashboardApplication:
                                     "new_protocol_id": protocol_id,
                                     "compatibility": compatibility,
                                     "model_compatibility": compatibility_evidence,
+                                    "starting_equity": self.state.simulation.equity,
+                                    "hold_benchmark": self._hold_snapshot(self.state.simulation.previous_marks or {}),
                                 },
                                 None,
                                 None,
@@ -1119,6 +1324,18 @@ class PaperDashboardApplication:
                     if model_changed and fitted_policy is not None:
                         self.state.model_id = fitted_policy.model_id
                         self.state.model_checkpoint = fitted_policy.checkpoint
+                        self.state.model_fitted_at = (
+                            self.state.revision.get("validation", {}).get("fitted_at")
+                            if validated_transition
+                            else now.isoformat()
+                        )
+                        self.state.fitting = {
+                            "status": "idle",
+                            "completed_at": now.isoformat(),
+                            "last_successful_fit_at": now.isoformat(),
+                            "attempt_count": 0,
+                            "next_retry_at": None,
+                        }
                         events.append(
                             (
                                 "PolicyHandoff",
@@ -1141,6 +1358,7 @@ class PaperDashboardApplication:
                 except BaseException:
                     if rollback is not None:
                         rollback()
+                    self.state = before_activation
                     raise
                 self._deliver_notifications()
                 return self.live_snapshot()
@@ -1281,6 +1499,8 @@ class PaperDashboardApplication:
                 "next_decision_at": self._next_decision_at(now).isoformat(),
                 "pending_fill": _pending_payload(state.pending_execution),
                 "fitting": state.fitting,
+                "revision": state.revision,
+                "hold_benchmark": self._hold_snapshot(marks),
                 "controls": self._control_availability(),
                 "control_estimates": {
                     "pause": {"estimated_cost": 0.0},
@@ -1367,6 +1587,7 @@ class PaperDashboardApplication:
             if created_at is not None
             else None
         )
+        self._collect_notifications()
         notification_health = self.store.notification_health()
         last_handoff = next(
             (
@@ -1392,12 +1613,17 @@ class PaperDashboardApplication:
                 "protocol_id": state.protocol_id,
                 "model_id": state.model_id,
                 "model_checkpoint": state.model_checkpoint,
+                "fitted_at": state.model_fitted_at,
+                "age_seconds": max(0.0, (now - datetime.fromisoformat(state.model_fitted_at)).total_seconds())
+                if state.model_fitted_at
+                else None,
                 "lifecycle": state.lifecycle.value,
                 "compatibility": state.compatibility_manifest,
                 "proposed_protocol_id": state.proposed_protocol_id,
                 "proposed_compatibility": state.proposed_compatibility_manifest,
             },
             "fitting": state.fitting,
+            "revision": state.revision,
             "last_policy_handoff": last_handoff,
             "compute": compute,
             "operating_windows": self.store.operating_windows(state.account_id),
@@ -1410,6 +1636,7 @@ class PaperDashboardApplication:
             "backup": backup,
             "service": {
                 "owner": "single-process",
+                "policy_preparing": self._policy_preparing,
                 "status": "running" if not self._closed else "stopped",
                 "error": state.operator_error,
             },
@@ -1454,6 +1681,7 @@ class PaperDashboardApplication:
                         "equity": payload["equity"],
                         "cash_benchmark": payload.get("cash_benchmark", state.starting_equity),
                         "equal_weight_benchmark": payload.get("equal_weight_benchmark"),
+                        "hold_benchmark": payload.get("hold_benchmark"),
                         "drawdown": payload["drawdown"],
                         "gross_exposure": payload["gross_exposure"],
                         "net_exposure": payload.get("net_exposure"),
@@ -1640,6 +1868,17 @@ class PaperDashboardApplication:
         notifications = self._pending_notifications
         self._pending_notifications = []
         try:
+            attribution_inputs = []
+            export = getattr(self.policy_backend, "export_attribution_input", None)
+            for kind, occurred_at, payload, decision_id, _ in events:
+                if kind == "DecisionRecord" and export is not None and decision_id is not None:
+                    input_id = str(payload["input_id"])
+                    blob = export(input_id)
+                    digest = hashlib.sha256(blob).hexdigest()
+                    payload["attribution_input_hash"] = digest
+                    attribution_inputs.append(
+                        (input_id, decision_id, str(payload["model_id"]), digest, blob, occurred_at)
+                    )
             return self.store.commit(
                 self.state,
                 events,
@@ -1648,6 +1887,7 @@ class PaperDashboardApplication:
                 operating_window=operating_window,
                 close_window=close_window,
                 notifications=notifications,
+                attribution_inputs=attribution_inputs,
             )
         except BaseException:
             restored = self.store.load_active_account()
@@ -1692,19 +1932,30 @@ class PaperDashboardApplication:
     def _queue_notification(self, dedupe_key: str, kind: str, payload: dict[str, Any], now: datetime) -> None:
         self._pending_notifications.append((dedupe_key, kind, payload, now))
 
-    def _deliver_notifications(self) -> None:
-        for row in self.store.pending_notifications():
-            error: str | None = None
+    def _collect_notifications(self) -> None:
+        for notification_id, job in list(self._notification_jobs.items()):
+            if not job.done():
+                continue
+            error = None
             try:
-                result = self.notifications.notify(str(row["kind"]), json.loads(str(row["payload"])))
+                result = job.result()
                 if inspect.isawaitable(result):
-                    raise RuntimeError("notification sink must enqueue without awaiting")
+                    raise RuntimeError("notification sink must be synchronous")
             except Exception as exception:
                 error = str(exception)
-                self.state.notification_error = error
-            else:
-                self.state.notification_error = None
-            self.store.mark_notification(str(row["notification_id"]), self._now(), error)
+            self.store.mark_notification(notification_id, self._now(), error)
+            self.state.notification_error = error
+            del self._notification_jobs[notification_id]
+
+    def _deliver_notifications(self) -> None:
+        self._collect_notifications()
+        for row in self.store.pending_notifications(self._now()):
+            notification_id = str(row["notification_id"])
+            if notification_id not in self._notification_jobs:
+                self._notification_jobs[notification_id] = self._notification_executor.submit(
+                    self.notifications.notify, str(row["kind"]), json.loads(str(row["payload"]))
+                )
+        self._collect_notifications()
 
     def _coerce_decision(
         self,
@@ -1736,6 +1987,14 @@ class PaperDashboardApplication:
             raise ValueError("Target Weights exceed the concentration limit")
         if sum(abs(weight) for weight in target.values()) > self.config.max_gross_exposure + 1e-6:
             raise ValueError("Target Weights exceed No Leverage")
+
+    def _hold_snapshot(self, marks: Mapping[str, float]) -> dict[str, float] | None:
+        if self.state.hold_benchmark is None:
+            return None
+        result = deepcopy(self.state.hold_benchmark).mark(marks)
+        result["excess_pnl"] = self.state.simulation.equity - result["equity"]
+        result["excess_return"] = result["excess_pnl"] / result["starting_equity"]
+        return result
 
     def _is_flat(self) -> bool:
         return all(abs(quantity) <= 1e-12 for quantity in self.state.simulation.quantities.values())
@@ -1790,6 +2049,13 @@ class PaperDashboardApplication:
                 "decisions": 0,
                 "executable_changes": 0,
                 "_high_water": last_equity,
+                "hold_benchmark": None,
+                "transaction_cost": 0.0,
+                "funding": 0.0,
+                "turnover": 0.0,
+                "missed_executions": 0,
+                "below_threshold": 0,
+                "interventions": 0,
             }
 
         for event in events:
@@ -1798,7 +2064,9 @@ class PaperDashboardApplication:
                     current["ended_at"] = event.occurred_at.isoformat()
                     segments.append(current)
                 protocol_id = str(event.payload.get("new_protocol_id", state.protocol_id))
+                last_equity = float(event.payload.get("starting_equity", last_equity))
                 current = start(protocol_id, event.occurred_at)
+                current["hold_benchmark"] = event.payload.get("hold_benchmark")
                 continue
             if current is None and event.event_type in {
                 "AccountMarked",
@@ -1814,16 +2082,30 @@ class PaperDashboardApplication:
                 high_water = max(float(current["_high_water"]), last_equity)
                 current["_high_water"] = high_water
                 current["current_equity"] = last_equity
+                current["hold_benchmark"] = event.payload.get("hold_benchmark")
+                current["gross_exposure"] = event.payload.get("gross_exposure")
                 current["net_pnl"] = last_equity - float(current["starting_equity"])
                 current["compounded_net_return"] = last_equity / float(current["starting_equity"]) - 1.0
                 current["maximum_drawdown"] = max(
                     float(current["maximum_drawdown"]),
                     1.0 - last_equity / high_water,
                 )
+            elif event.event_type == "FundingApplied":
+                current["funding"] += float(event.payload["cashflow"])
+            elif event.event_type == "InstrumentFilled":
+                current["turnover"] += abs(float(event.payload["quantity"]) * float(event.payload["reference_price"]))
+            elif event.event_type == "MissedExecution":
+                current["missed_executions"] += 1
+            elif event.event_type == "DecisionCompleted" and event.payload.get("outcome") == "below_threshold":
+                current["below_threshold"] += 1
             elif event.event_type == "DecisionRecord":
                 current["decisions"] = int(current["decisions"]) + 1
-            elif event.event_type == "PortfolioChangeExecuted" and event.payload.get("kind") == "policy":
-                current["executable_changes"] = int(current["executable_changes"]) + 1
+            elif event.event_type == "PortfolioChangeExecuted":
+                if event.payload.get("kind") == "policy":
+                    current["executable_changes"] = int(current["executable_changes"]) + 1
+                current["transaction_cost"] += float(event.payload.get("transaction_cost", 0.0))
+            elif event.event_type == "OperatorIntervention":
+                current["interventions"] += 1
 
         if current is None:
             current = start(state.protocol_id, state.created_at)
@@ -1922,6 +2204,8 @@ def create_application(
         starting_equity=starting_equity,
         backup_directory=backup_directory,
     )
+
+    paper._policy_preparing = policy_preparer is not None
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -2100,6 +2384,8 @@ async def _run_policy_preparation(
         raise
     except Exception as error:
         paper.record_operator_error(f"policy preparation failed: {error}")
+    finally:
+        paper._policy_preparing = False
 
 
 def _operator_start_delay(paper: PaperDashboardApplication, interval_seconds: float) -> float:

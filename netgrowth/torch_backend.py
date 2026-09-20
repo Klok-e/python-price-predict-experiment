@@ -171,13 +171,14 @@ def _training_step(
         minimum_turnover,
     ) = inputs
     desired = constrain_weights(market_logits + torch.nn.functional.linear(current, current_matrix))
+    signal_turnover = (desired - current).abs().sum()
     latency_factor = 1.0 + (current * latency_step).sum()
     current_at_fill = current * (1.0 + latency_step) / latency_factor.clamp_min(1e-6)
     post_cost_ratio = torch.ones((), device=current.device)
     for _ in range(16):
         desired_turnover = (desired * post_cost_ratio - current_at_fill).abs().sum()
         post_cost_ratio = 1.0 - transaction_cost * desired_turnover
-    executes = desired_turnover >= minimum_turnover
+    executes = signal_turnover >= minimum_turnover
     executed = torch.where(executes, desired, current_at_fill)
     realized_turnover = torch.where(executes, desired_turnover, torch.zeros_like(desired_turnover))
     post_cost_ratio = torch.where(executes, post_cost_ratio, torch.ones_like(post_cost_ratio))

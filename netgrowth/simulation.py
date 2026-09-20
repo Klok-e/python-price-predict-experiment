@@ -83,6 +83,7 @@ class PendingPortfolioChange:
     eligible_at: datetime
     target_weights: dict[str, float]
     forced: bool = False
+    eligibility_at_signal: bool = True
 
 
 @dataclass
@@ -124,6 +125,7 @@ class SimulationState:
                     "eligible_at": self.pending.eligible_at,
                     "target_weights": self.pending.target_weights,
                     "forced": self.pending.forced,
+                    "eligibility_at_signal": self.pending.eligibility_at_signal,
                 }
                 if self.pending
                 else None
@@ -161,6 +163,7 @@ class SimulationState:
                     eligible_at=datetime.fromisoformat(pending["eligible_at"]),
                     target_weights={key: float(value) for key, value in pending["target_weights"].items()},
                     forced=bool(pending["forced"]),
+                    eligibility_at_signal=bool(pending.get("eligibility_at_signal", False)),
                 )
                 if pending
                 else None
@@ -253,7 +256,7 @@ def schedule_portfolio_change(
     signal_time: datetime,
     target_weights: dict[str, float],
     config: SimulationConfig,
-) -> None:
+) -> bool:
     """Schedule a target after marking the signal minute in an incremental session."""
     if state.previous_timestamp != signal_time:
         raise ValueError("a paper target must follow its marked Signal Time")
@@ -265,10 +268,17 @@ def schedule_portfolio_change(
         raise ValueError("Target Weights exceed the per-instrument concentration limit")
     if sum(abs(weight) for weight in target_weights.values()) > config.max_gross_exposure + 1e-6:
         raise ValueError("Target Weights exceed the Gross Exposure limit")
+    if state.previous_marks is None:
+        raise ValueError("a paper target requires marked Signal-Time prices")
+    current_weights = marked_weights(state, state.previous_marks, config.tickers)
+    turnover = sum(abs(target_weights[ticker] - current_weights[ticker]) for ticker in config.tickers)
+    if turnover < config.minimum_turnover:
+        return False
     state.pending = PendingPortfolioChange(
         eligible_at=signal_time + timedelta(seconds=config.decision_latency_seconds),
         target_weights=target_weights,
     )
+    return True
 
 
 def _mark_drawdown(state: SimulationState, timestamp: datetime, config: SimulationConfig) -> float:
@@ -353,8 +363,11 @@ def advance_simulation(
             assert fill_references is not None
             target, forced = executable_pending.target_weights, executable_pending.forced
             deltas, turnover = _post_cost_deltas(state, target, fill_references, config)
-            turnover_fraction = turnover / state.equity if state.equity > 0.0 else float("inf")
-            if forced or turnover_fraction >= config.minimum_turnover:
+            executes = forced or executable_pending.eligibility_at_signal
+            if not executes:
+                turnover_fraction = turnover / state.equity if state.equity > 0.0 else float("inf")
+                executes = turnover_fraction >= config.minimum_turnover
+            if executes:
                 state.turnover_notional += turnover
                 for ticker in config.tickers:
                     delta = deltas[ticker]

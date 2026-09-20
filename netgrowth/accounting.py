@@ -397,3 +397,41 @@ def activity_metrics(outcomes: Iterable[ActivityOutcome]) -> ActivityMetrics:
         missed_executions=counts[ActivityOutcome.MISSED_EXECUTION],
         operator_interventions=counts[ActivityOutcome.OPERATOR_INTERVENTION],
     )
+
+
+@dataclass
+class HoldBenchmark:
+    starting_equity: float
+    quantities: dict[str, float]
+    entry_marks: dict[str, float]
+    funding_cashflow: float = 0.0
+    high_water: float = 0.0
+    maximum_drawdown: float = 0.0
+
+    @classmethod
+    def start(cls, equity: float, quantities: Mapping[str, float], marks: Mapping[str, float]) -> HoldBenchmark:
+        return cls(equity, dict(quantities), dict(marks), high_water=equity)
+
+    def apply_funding(self, rates: Mapping[str, float], marks: Mapping[str, float]) -> None:
+        self.funding_cashflow -= sum(self.quantities[t] * marks[t] * rate for t, rate in rates.items())
+
+    def mark(self, marks: Mapping[str, float]) -> dict[str, float]:
+        equity = (
+            self.starting_equity
+            + self.funding_cashflow
+            + sum(q * (marks[t] - self.entry_marks[t]) for t, q in self.quantities.items())
+        )
+        self.high_water = max(self.high_water, equity)
+        drawdown = 1.0 - equity / self.high_water if self.high_water > 0 else 0.0
+        self.maximum_drawdown = max(self.maximum_drawdown, drawdown)
+        return {
+            "equity": equity,
+            "starting_equity": self.starting_equity,
+            "net_pnl": equity - self.starting_equity,
+            "compounded_net_return": equity / self.starting_equity - 1.0,
+            "funding": self.funding_cashflow,
+            "maximum_drawdown": self.maximum_drawdown,
+            "gross_exposure": sum(abs(q * marks[t]) for t, q in self.quantities.items()) / equity
+            if equity > 0
+            else 0.0,
+        }

@@ -13,6 +13,7 @@
     equity: "#63e6be",
     cash: "#91a9a1",
     benchmark: "#b29af8",
+    hold: "#58c7dc",
     drawdown: "#ff786b",
     gross: "#f4c95d",
     net: "#58c7dc",
@@ -151,6 +152,10 @@
       const candles = sortedPoints(this.data.candles ?? this.data.price ?? []);
       const weights = sortedPoints(this.data.weights ?? this.data.weight_points ?? []);
       const portfolio = sortedPoints(this.data.portfolio ?? this.data.account ?? this.data.panels ?? []);
+      const equityPortfolio = portfolio.map((point) => ({
+        ...point,
+        hold_benchmark_equity: point.hold_benchmark?.equity ?? point.hold_benchmark_equity,
+      }));
       const markers = sortedPoints(this.data.markers ?? this.data.events ?? []);
       const gaps = Array.isArray(this.data.gaps) ? this.data.gaps : [];
       const allTimes = [
@@ -218,12 +223,14 @@
         point.equity ?? point.marked_equity,
         point.cash_benchmark,
         point.equal_weight_benchmark ?? point.passive_benchmark,
+        point.hold_benchmark?.equity ?? point.hold_benchmark_equity,
       ]);
       const equityExtent = extent(equityValues);
       const equityScale = linearScale(equityExtent[0], equityExtent[1], panels.equity.bottom, panels.equity.top);
-      this.drawLine(svg, portfolio, xScale, equityScale, "equity", "marked_equity", COLORS.equity);
-      this.drawLine(svg, portfolio, xScale, equityScale, "cash_benchmark", null, COLORS.cash, "3 3");
-      this.drawLine(svg, portfolio, xScale, equityScale, "equal_weight_benchmark", "passive_benchmark", COLORS.benchmark);
+      this.drawLine(svg, equityPortfolio, xScale, equityScale, "equity", "marked_equity", COLORS.equity);
+      this.drawLine(svg, equityPortfolio, xScale, equityScale, "cash_benchmark", null, COLORS.cash, "3 3");
+      this.drawLine(svg, equityPortfolio, xScale, equityScale, "equal_weight_benchmark", "passive_benchmark", COLORS.benchmark);
+      this.drawLine(svg, equityPortfolio, xScale, equityScale, "hold_benchmark_equity", null, COLORS.hold, "6 3");
 
       const drawdownExtent = extent([0, ...portfolio.map((point) => point.drawdown ?? point.current_drawdown)]);
       const drawdownScale = linearScale(drawdownExtent[0], drawdownExtent[1], panels.drawdown.top, panels.drawdown.bottom);
@@ -431,7 +438,7 @@
         tooltip.textContent = [
           `${formatTime(time, { seconds: true, zone: true })} · ${formatTime(time, { utc: true, seconds: true, zone: true })}`,
           `Price ${formatNumber(candle?.close)} · current ${formatPercent(weight?.current ?? weight?.current_weight)} · target ${formatPercent(weight?.target ?? weight?.target_weight)}`,
-          `Equity ${formatMoney(account?.equity ?? account?.marked_equity)} · cash benchmark ${formatMoney(account?.cash_benchmark)} · equal-weight ${formatMoney(account?.equal_weight_benchmark ?? account?.passive_benchmark)}`,
+          `Equity ${formatMoney(account?.equity ?? account?.marked_equity)} · hold benchmark ${formatMoney(account?.hold_benchmark?.equity ?? account?.hold_benchmark_equity)} · cash benchmark ${formatMoney(account?.cash_benchmark)} · equal-weight ${formatMoney(account?.equal_weight_benchmark ?? account?.passive_benchmark)}`,
           `Drawdown ${formatPercent(account?.drawdown ?? account?.current_drawdown)} · gross ${formatPercent(account?.gross_exposure)} · net ${formatPercent(account?.net_exposure)}`,
         ].join("\n");
         tooltip.style.whiteSpace = "pre-line";

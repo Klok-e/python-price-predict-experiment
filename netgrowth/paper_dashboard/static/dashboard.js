@@ -119,6 +119,11 @@
       protocol_id: "Policy Protocol ID",
       model_id: "Fitted Policy ID",
       input_id: "Market State input ID",
+      fitted_at: "Fitted at",
+      age_seconds: "Model age",
+      attempt_count: "Attempts",
+      next_retry_at: "Next retry",
+      last_successful_fit_at: "Last successful fit",
       utc: "UTC",
       wal: "SQLite WAL",
       pid: "Process ID",
@@ -132,6 +137,8 @@
   function formatUnknown(value, key = "") {
     if (value === null || value === undefined || value === "") return "—";
     if (typeof value === "boolean") return value ? "Yes" : "No";
+    if (key === "age_seconds") return duration(value);
+    if (key === "status" && typeof value === "string") return humanize(value);
     if (Array.isArray(value)) return value.map((item) => formatUnknown(item)).join(", ") || "—";
     if (isObject(value)) {
       return Object.entries(value)
@@ -263,7 +270,19 @@
     state.chart = unwrap(payload, "chart");
     if (state.chart.ticker) state.selectedTicker = state.chart.ticker;
     renderTickerOptions();
+    renderChartLegend();
     state.chartRenderer.update(state.chart);
+  }
+
+  function renderChartLegend() {
+    const legend = document.querySelector(".chart-legend");
+    if (!legend || legend.querySelector("[data-legend='hold-benchmark']")) return;
+    const portfolio = asArray(first(state.chart?.portfolio, state.chart?.account, state.chart?.panels));
+    if (!portfolio.some((point) => isObject(point.hold_benchmark) || number(point.hold_benchmark_equity) !== null)) return;
+    legend.append(element("span", { attributes: { "data-legend": "hold-benchmark" } }, [
+      element("i", { className: "legend-current" }),
+      document.createTextNode("Hold benchmark"),
+    ]));
   }
 
   async function loadCsrf() {
@@ -321,8 +340,8 @@
       ),
       heroCard(
         "Policy fitting",
-        fittingStatus,
-        first(fitting.error, fitting.last_error, fitting.progress !== undefined ? `${formatPercent(fitting.progress)} complete` : fitting.next_fit_at ? `Next ${formatDateTime(fitting.next_fit_at, { full: true, zone: true })}` : "No fitting detail"),
+        humanize(fittingStatus),
+        fittingDetail(fitting),
       ),
     ];
     $("live-overview").replaceChildren(...overview);
@@ -340,6 +359,15 @@
       ["Composed equity", formatMoney(first(account.marked_equity_reconciliation?.composed_equity, account.composed_equity)), "Cash balance + unrealized P&L"],
       ["Reconciliation difference", formatMoney(first(account.marked_equity_reconciliation?.difference, account.reconciliation_difference)), "Composed equity + difference = authoritative Marked Equity", sentiment(first(account.marked_equity_reconciliation?.difference, account.reconciliation_difference), true)],
     ];
+    const hold = first(live.hold_benchmark, account.hold_benchmark);
+    if (isObject(hold)) {
+      accountMetrics.push(
+        ["Hold benchmark", formatMoney(hold.equity), "Positions held from the revision start"],
+        ["Account vs hold", formatMoney(hold.excess_pnl), `${formatPercent(hold.excess_return)} difference`, sentiment(hold.excess_pnl)],
+        ["Hold return", formatPercent(hold.compounded_net_return), `Maximum drawdown ${formatPercent(hold.maximum_drawdown)}`, sentiment(hold.compounded_net_return)],
+        ["Hold funding", formatMoney(hold.funding), `Gross exposure ${formatPercent(hold.gross_exposure)}`, sentiment(hold.funding)],
+      );
+    }
     $("account-metrics").replaceChildren(...accountMetrics.map((metric) => metricCard(...metric)));
 
     const concentration = first(risk.concentrations, risk.per_instrument_concentration, {});
@@ -363,6 +391,17 @@
     renderRecentEvents(asArray(first(live.recent_events, live.events, live.recent_activity)));
     renderTickerOptions();
     updateControlAvailability(lifecycle, risk);
+  }
+
+  function fittingDetail(fitting) {
+    const details = [];
+    if (fitting.next_retry_at) details.push(`Retry ${formatDateTime(fitting.next_retry_at, { full: true, zone: true })}`);
+    if (fitting.attempt_count !== undefined) details.push(`Attempt ${formatNumber(fitting.attempt_count, 0)}`);
+    if (fitting.last_successful_fit_at) details.push(`Last successful fit ${formatDateTime(fitting.last_successful_fit_at, { full: true, zone: true })}`);
+    if (fitting.error || fitting.last_error) details.push(String(first(fitting.error, fitting.last_error)));
+    if (!details.length && fitting.progress !== undefined) details.push(`${formatPercent(fitting.progress)} complete`);
+    if (!details.length && fitting.next_fit_at) details.push(`Next ${formatDateTime(fitting.next_fit_at, { full: true, zone: true })}`);
+    return details.join(" · ") || "No fitting detail";
   }
 
   function renderPositions(positions) {
@@ -563,9 +602,23 @@
       const ended = first(segment.ended_at, segment.end);
       const interval = `${formatDateTime(first(segment.started_at, segment.start), { full: true })} – ${ended ? formatDateTime(ended, { full: true }) : "active"}`;
       const activity = `${first(segment.decisions, 0)} decisions · ${first(segment.executable_changes, 0)} executable changes`;
+      const hold = isObject(segment.hold_benchmark) ? segment.hold_benchmark : null;
+      const performance = hold
+        ? `Account ${formatPercent(first(segment.compounded_net_return, segment.net_return, 0))} · Hold ${formatPercent(hold.compounded_net_return)}`
+        : `${formatPercent(first(segment.compounded_net_return, segment.net_return, 0))} · ${activity}`;
+      const details = [activity, interval];
+      if (hold) {
+        details.unshift(`Difference ${formatMoney(hold.excess_pnl)} · ${formatPercent(hold.excess_return)}`);
+        details.push(`Hold equity ${formatMoney(hold.equity)} · hold drawdown ${formatPercent(hold.maximum_drawdown)}`);
+      }
+      details.push(
+        `Cost ${formatMoney(segment.transaction_cost)} · funding ${formatMoney(segment.funding)} · turnover ${formatMoney(segment.turnover)}`,
+        `Gross exposure ${formatPercent(segment.gross_exposure)} · Below threshold ${formatNumber(segment.below_threshold, 0)} · missed executions ${formatNumber(segment.missed_executions, 0)}`,
+      );
       return metricCard(
         `Protocol ${protocol.slice(0, 12)}`,
-        `${formatPercent(first(segment.compounded_net_return, segment.net_return, 0))} · ${activity} · ${interval}`,
+        performance,
+        details.join(" · "),
       );
     });
     $("history-protocol-segments").replaceChildren(

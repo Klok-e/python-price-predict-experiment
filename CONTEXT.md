@@ -147,6 +147,7 @@ _Avoid_: Rejected signal, zero-turnover decision, delayed fill
 
 **Portfolio Change**:
 The signed difference between Current Portfolio weights and Target Weights that must be executed.
+Executable quantities are calculated at fresh fill prices to reach the recorded Target Weights.
 _Avoid_: Signal change, prediction update
 
 **Decision Record**:
@@ -160,9 +161,11 @@ Target Weights. It is influence evidence, not a causal explanation.
 _Avoid_: Trade reason, model intent, proven cause
 
 **Executable Portfolio Change**:
-A decision-time Portfolio Change whose total turnover across all instruments is large enough to
-execute. Smaller desired changes accumulate against the Current Portfolio rather than creating
-fills.
+A Portfolio Change whose total turnover across all instruments meets the execution threshold at
+Signal Time, retaining eligibility despite subsequent turnover changes subject to risk controls and
+execution expiry. A below-threshold decision completes immediately without scheduling execution or
+becoming a Missed Execution; desired changes accumulate against the Current Portfolio until a
+later decision qualifies.
 _Avoid_: Prediction update, micro-fill, qualifying change
 
 **Transaction Cost**:
@@ -179,6 +182,13 @@ the same timing, cost, funding, and portfolio constraints intended for paper tra
 _Avoid_: Backtest shortcut, current-close replay
 
 ### Evidence
+
+**Hold Benchmark**:
+A comparison portfolio initialized with the Paper Account's equity and positions at a Policy
+Revision boundary, holding those quantities unchanged while including subsequent price changes and
+Funding. Its return difference from the Paper Account measures the net contribution of subsequent
+policy decisions after Transaction Costs without selecting exposure from future observations.
+_Avoid_: Exposure fitted in hindsight, rebalanced benchmark, proof of policy skill
 
 **Walk-Forward Fold**:
 A chronological training period followed by a disjoint validation period evaluated prequentially,

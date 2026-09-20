@@ -4,7 +4,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from netgrowth.simulation import MarketMinute, SimulationConfig, advance_simulation, simulate
+from netgrowth.simulation import (
+    MarketMinute,
+    SimulationConfig,
+    SimulationState,
+    advance_simulation,
+    simulate,
+)
 
 TICKERS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT")
 FLAT = dict.fromkeys(TICKERS, 0.0)
@@ -87,6 +93,65 @@ def test_sub_one_percent_changes_accumulate_until_the_full_change_executes() -> 
     assert len(result.trades) == 1
     assert result.trades[0].target_weight == pytest.approx(0.011)
     assert result.executable_portfolio_changes == 1
+
+
+def test_signal_time_qualified_change_fills_after_price_drift_reduces_fill_turnover() -> None:
+    prices = {ticker: 100.0 for ticker in TICKERS}
+    doubled = {**prices, "BTCUSDT": 200.0}
+
+    result = simulate(
+        [
+            minute(0, prices, target={**FLAT, "BTCUSDT": 0.02}),
+            minute(1, prices),
+            minute(2, prices, target={**FLAT, "BTCUSDT": 0.031}),
+            minute(3, doubled),
+        ],
+        SimulationConfig(tickers=TICKERS),
+    )
+
+    assert len(result.trades) == 2
+    assert result.trades[-1].target_weight == pytest.approx(0.031)
+    assert result.executable_portfolio_changes == 2
+
+
+def test_signal_time_below_threshold_change_does_not_create_pending_fill() -> None:
+    prices = {ticker: 100.0 for ticker in TICKERS}
+    _, state = advance_simulation(
+        [minute(0, prices, target={**FLAT, "BTCUSDT": 0.005})],
+        SimulationConfig(tickers=TICKERS),
+    )
+
+    assert state.pending is None
+
+
+def test_legacy_pending_payload_uses_fill_time_threshold_only_while_draining() -> None:
+    prices = {ticker: 100.0 for ticker in TICKERS}
+    legacy_state = SimulationState.from_payload(
+        {
+            "quantities": FLAT,
+            "equity": 10_000.0,
+            "high_water": 10_000.0,
+            "max_drawdown": 0.0,
+            "turnover_notional": 0.0,
+            "transaction_cost": 0.0,
+            "funding_cashflow": 0.0,
+            "executable_portfolio_changes": 0,
+            "previous_timestamp": "2026-01-01T00:00:00+00:00",
+            "previous_marks": prices,
+            "pending": {
+                "eligible_at": "2026-01-01T00:01:00+00:00",
+                "target_weights": {**FLAT, "BTCUSDT": 0.005},
+                "forced": False,
+            },
+            "risk_stop_time": None,
+            "flattened": False,
+        }
+    )
+
+    result, state = advance_simulation([minute(1, prices)], SimulationConfig(tickers=TICKERS), legacy_state)
+
+    assert result.trades == ()
+    assert state.pending is None
 
 
 def test_funding_is_applied_to_the_signed_position_at_its_event_time() -> None:

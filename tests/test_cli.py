@@ -5,11 +5,11 @@ import pytest
 from netgrowth.cli import build_parser, main
 
 
-def test_cli_exposes_exactly_the_four_policy_workflow_commands() -> None:
+def test_cli_exposes_policy_workflows_and_offline_revision_preparation() -> None:
     parser = build_parser()
     choices = next(action.choices for action in parser._actions if action.dest == "command")
 
-    assert set(choices) == {"data-sync", "validate", "holdout", "serve"}
+    assert set(choices) == {"data-sync", "validate", "holdout", "serve", "prepare-revision"}
 
 
 def test_cli_fixes_evidence_paths_and_rejects_policy_overrides() -> None:

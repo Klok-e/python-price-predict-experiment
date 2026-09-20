@@ -8,10 +8,12 @@ from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from io import BytesIO
 from pathlib import Path
 from threading import Lock
 from typing import Any, cast
 
+import numpy as np
 import pandas as pd
 import torch
 import uvicorn
@@ -30,8 +32,15 @@ from netgrowth.torch_backend import (
 )
 
 from .application import FittedPolicyCandidate, create_application
-from .domain import LifecycleState, MarketObservation, PolicyDecision, policy_revision_is_compatible
+from .domain import (
+    LifecycleState,
+    MarketObservation,
+    PolicyDecision,
+    eligibility_revision_is_supported,
+    policy_revision_is_compatible,
+)
 from .persistence import SQLitePaperStore
+from .revision_evidence import validate_revision_evidence
 
 
 def _decision_input_id(
@@ -149,35 +158,34 @@ class ProductionPolicyBackend:
     config: PolicyConfig
     device: str
     fitted_model: bytes
-    _attribution_inputs: dict[
-        str,
-        tuple[CanonicalDataset, dict[str, float], bytes, datetime],
-    ] = field(default_factory=dict, init=False, repr=False)
+    _attribution_inputs: dict[str, bytes] = field(default_factory=dict, init=False, repr=False)
     _inference_lock: Lock = field(default_factory=Lock, init=False, repr=False)
 
     def decide(self, observation: MarketObservation, current_weights: dict[str, float]) -> PolicyDecision:
         with self._inference_lock:
+            decision_model = self.fitted_model
             canonical = _causal_policy_input(self.adapter.load(), observation.timestamp)
             input_id = _decision_input_id(canonical.identity_hash, observation.timestamp, current_weights)
             result = self.backend.paper(
                 canonical,
                 self.config,
                 self.device,
-                validated_model=self.fitted_model,
-                fitted_model=self.fitted_model,
+                validated_model=decision_model,
+                fitted_model=decision_model,
                 observed_at=observation.timestamp,
                 current_weights=current_weights,
             )
-        self._attribution_inputs[input_id] = (
-            canonical,
-            current_weights.copy(),
-            self.fitted_model,
-            observation.timestamp,
-        )
         if result.refitted:
-            self._attribution_inputs.pop(input_id, None)
             raise RuntimeError("ordinary decision must not replace the active Fitted Policy")
-        model_id = sha256(self.fitted_model).hexdigest()
+        model_id = sha256(decision_model).hexdigest()
+        self._attribution_inputs[input_id] = self._serialize_attribution_input(
+            input_id=input_id,
+            canonical=canonical,
+            current_weights=current_weights,
+            model_id=model_id,
+            model_bytes=decision_model,
+            observed_at=observation.timestamp,
+        )
         return PolicyDecision(
             raw_target_weights=result.target_weights,
             target_weights=result.target_weights,
@@ -219,6 +227,9 @@ class ProductionPolicyBackend:
             second=0,
             microsecond=0,
         )
+        if fitting.get("status") == "failed":
+            retry_at = fitting.get("next_retry_at")
+            return not isinstance(retry_at, str) or utc_now >= datetime.fromisoformat(retry_at)
         attempted_at = fitting.get("completed_at") or fitting.get("due_at")
         if not isinstance(attempted_at, str):
             return True
@@ -262,6 +273,7 @@ class ProductionPolicyBackend:
             raise TypeError("production Policy Handoff requires serialized Fitted Policy bytes")
         if sha256(candidate.payload).hexdigest() != candidate.model_id:
             raise ValueError("Fitted Policy candidate identity does not match its checkpoint")
+        _retain_checkpoint(self.checkpoint_directory, candidate.model_id, candidate.payload)
         with self._inference_lock:
             previous = self.fitted_model
             self.fitted_model = candidate.payload
@@ -272,33 +284,39 @@ class ProductionPolicyBackend:
 
         return rollback
 
+    def export_attribution_input(self, input_id: str) -> bytes:
+        """Transfer the exact prepared explanation input to the Decision Record transaction."""
+        try:
+            return self._attribution_inputs.pop(input_id)
+        except KeyError as error:
+            raise RuntimeError("exact prepared attribution input is unavailable for this new decision") from error
+
     def attribute(self, input_id: str, decision: Mapping[str, Any]) -> dict[str, Any]:
-        retained = self._attribution_inputs.pop(input_id, None)
-        if retained is None:
-            retained = self._recover_attribution_input(decision)
-        canonical, current_weights, model_bytes, observed_at = retained
+        payload = decision.get("_durable_attribution_input")
+        if not isinstance(payload, bytes):
+            raise RuntimeError("exact durable attribution input is unavailable for this Decision Record")
+        metadata, market_values = self._deserialize_attribution_input(input_id, decision, payload)
+        model_id = str(metadata["model_id"])
+        model_bytes = self._model_bytes(model_id)
         selected = self.backend._selected_metadata(model_bytes)
         contract = _model_contract(selected, self.config)
-        prepared = _prepare(_recent_paper_context(canonical, pd.Timestamp(observed_at)))
-        revealed = prepared.state.loc[prepared.state.index <= pd.Timestamp(observed_at)]
-        context = revealed.tail(contract.receptive_bars)
-        if len(context) < contract.receptive_bars:
-            raise ValueError("insufficient revealed Market State for Model Attribution")
-        models = contract.restore(selected, context.shape[1])
+        if market_values.shape != (contract.receptive_bars, len(metadata["feature_names"])):
+            raise ValueError("durable attribution input does not match the selected model contract")
+        models = contract.restore(selected, market_values.shape[1])
         ensemble = _AttributionEnsemble(models)
         market_input = torch.tensor(
-            context.to_numpy(dtype="float32"),
+            market_values,
             dtype=torch.float32,
         ).unsqueeze(0)
         current = torch.tensor(
-            [[current_weights[ticker] for ticker in self.config.tickers]],
+            [[float(metadata["current_weights"][ticker]) for ticker in self.config.tickers]],
             dtype=torch.float32,
         )
         result = integrated_gradients(
             ensemble,
             market_input,
             current,
-            feature_metadata=feature_metadata_from_names(tuple(context.columns), self.config.tickers),
+            feature_metadata=feature_metadata_from_names(tuple(metadata["feature_names"]), self.config.tickers),
             target_names=self.config.tickers,
             portfolio_names=self.config.tickers,
         )
@@ -320,36 +338,86 @@ class ProductionPolicyBackend:
             "targets": [asdict(target) for target in result.targets],
         }
 
-    def _recover_attribution_input(
+    def _serialize_attribution_input(
         self,
-        decision: Mapping[str, Any],
-    ) -> tuple[CanonicalDataset, dict[str, float], bytes, datetime]:
-        signal_time = decision.get("signal_time")
-        if isinstance(signal_time, str):
-            observed_at = datetime.fromisoformat(signal_time)
-        elif isinstance(signal_time, datetime):
-            observed_at = signal_time
-        else:
-            raise ValueError("durable Decision Record lacks Signal Time")
-        current = decision.get("current_portfolio")
-        if not isinstance(current, Mapping):
-            raise ValueError("durable Decision Record lacks Current Portfolio")
-        model_id = decision.get("model_id")
-        if not isinstance(model_id, str):
-            raise ValueError("durable Decision Record lacks Fitted Policy identity")
-        input_id = decision.get("input_id")
-        if not isinstance(input_id, str):
-            raise ValueError("durable Decision Record lacks canonical Market State identity")
-        canonical = _causal_policy_input(self.attribution_adapter.load(), observed_at)
-        current_weights = {ticker: float(current[ticker]) for ticker in self.config.tickers}
-        if _decision_input_id(canonical.identity_hash, observed_at, current_weights) != input_id:
-            raise RuntimeError("canonical Market State identity differs from the durable Decision Record")
-        return (
-            canonical,
-            current_weights,
-            self._model_bytes(model_id),
-            observed_at,
+        *,
+        input_id: str,
+        canonical: CanonicalDataset,
+        current_weights: Mapping[str, float],
+        model_id: str,
+        model_bytes: bytes,
+        observed_at: datetime,
+    ) -> bytes:
+        selected = self.backend._selected_metadata(model_bytes)
+        contract = _model_contract(selected, self.config)
+        prepared = _prepare(_recent_paper_context(canonical, pd.Timestamp(observed_at)))
+        revealed = prepared.state.loc[prepared.state.index <= pd.Timestamp(observed_at)]
+        context = revealed.tail(contract.receptive_bars)
+        if len(context) < contract.receptive_bars:
+            raise ValueError("insufficient revealed Market State for durable Model Attribution")
+        metadata = {
+            "input_id": input_id,
+            "model_id": model_id,
+            "model_hash": sha256(model_bytes).hexdigest(),
+            "observed_at": observed_at.isoformat(),
+            "current_weights": {ticker: float(current_weights[ticker]) for ticker in self.config.tickers},
+            "feature_names": list(context.columns),
+            "tickers": list(self.config.tickers),
+        }
+        buffer = BytesIO()
+        encoded_metadata = json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode()
+        np.savez_compressed(
+            buffer,
+            market_values=context.to_numpy(dtype="float32"),
+            metadata=np.frombuffer(encoded_metadata, dtype=np.uint8),
         )
+        return buffer.getvalue()
+
+    def _deserialize_attribution_input(
+        self,
+        input_id: str,
+        decision: Mapping[str, Any],
+        payload: bytes,
+    ) -> tuple[dict[str, Any], np.ndarray]:
+        try:
+            with np.load(BytesIO(payload), allow_pickle=False) as archive:
+                market_values = archive["market_values"]
+                metadata = json.loads(bytes(archive["metadata"].tolist()).decode())
+        except (KeyError, OSError, ValueError, json.JSONDecodeError) as error:
+            raise RuntimeError("durable attribution input is malformed") from error
+        if not isinstance(metadata, dict):
+            raise RuntimeError("durable attribution metadata is malformed")
+        if metadata.get("input_id") != input_id or decision.get("input_id") != input_id:
+            raise RuntimeError("durable attribution input identity differs from the Decision Record")
+        model_id = decision.get("model_id")
+        if not isinstance(model_id, str) or metadata.get("model_id") != model_id:
+            raise RuntimeError("durable attribution model identity differs from the Decision Record")
+        if metadata.get("model_hash") != model_id:
+            raise RuntimeError("durable attribution model hash does not match its identity")
+        if metadata.get("tickers") != list(self.config.tickers):
+            raise RuntimeError("durable attribution input Trading Universe differs from the active policy")
+        current_weights = metadata.get("current_weights")
+        feature_names = metadata.get("feature_names")
+        if not isinstance(current_weights, dict) or set(current_weights) != set(self.config.tickers):
+            raise RuntimeError("durable attribution input lacks the exact Current Portfolio")
+        signal_time = decision.get("signal_time")
+        expected_signal_time = signal_time.isoformat() if isinstance(signal_time, datetime) else signal_time
+        if not isinstance(expected_signal_time, str) or metadata.get("observed_at") != expected_signal_time:
+            raise RuntimeError("durable attribution input Signal Time differs from the Decision Record")
+        recorded_portfolio = decision.get("current_portfolio")
+        if not isinstance(recorded_portfolio, Mapping):
+            raise RuntimeError("durable Decision Record lacks the exact Current Portfolio")
+        try:
+            expected_portfolio = {ticker: float(recorded_portfolio[ticker]) for ticker in self.config.tickers}
+        except (KeyError, TypeError, ValueError) as error:
+            raise RuntimeError("durable Decision Record lacks the exact Current Portfolio") from error
+        if {ticker: float(current_weights[ticker]) for ticker in self.config.tickers} != expected_portfolio:
+            raise RuntimeError("durable attribution input Current Portfolio differs from the Decision Record")
+        if not isinstance(feature_names, list) or not all(isinstance(name, str) for name in feature_names):
+            raise RuntimeError("durable attribution input lacks feature metadata")
+        if market_values.dtype != np.dtype("float32") or market_values.ndim != 2:
+            raise RuntimeError("durable attribution market input is not a two-dimensional float32 tensor")
+        return metadata, market_values
 
     def diagnostics(self) -> dict[str, str]:
         """Report the configured and available fitting/inference runtime."""
@@ -420,6 +488,20 @@ class DesktopNotifications:
         )
 
 
+def _retain_checkpoint(directory: Path, model_id: str, payload: bytes) -> Path:
+    if sha256(payload).hexdigest() != model_id:
+        raise ValueError("checkpoint checksum mismatch")
+    directory.mkdir(parents=True, exist_ok=True)
+    destination = directory / f"{model_id}.pt"
+    if destination.exists() and destination.read_bytes() != payload:
+        raise ValueError("retained checkpoint does not match candidate identity")
+    if not destination.exists():
+        temporary = destination.with_suffix(".tmp")
+        temporary.write_bytes(payload)
+        temporary.replace(destination)
+    return destination.resolve()
+
+
 def run_dashboard(
     config_path: str | Path,
     data_directory: str | Path,
@@ -427,6 +509,7 @@ def run_dashboard(
     host: str,
     port: int,
     device: str,
+    revision_bundle: str | Path | None = None,
 ) -> None:
     """Run the one uvicorn process; never launch a browser or bind beyond the requested host."""
     if host != "127.0.0.1":
@@ -460,7 +543,19 @@ def run_dashboard(
         if sha256(fitted_model).hexdigest() != restored.model_id:
             raise RuntimeError("persisted Fitted Policy checkpoint does not match Paper Account state")
     else:
-        fitted_model = _selected_fitted_policy(operational)
+        fitted_model = b"" if revision_bundle is not None else _selected_fitted_policy(operational)
+    if restored is None and revision_bundle is not None:
+        initial_bundle = json.loads(Path(revision_bundle).read_text())
+        validate_revision_evidence(
+            initial_bundle,
+            protocol_id=config.protocol_id,
+            model_id=str(initial_bundle.get("model_id")),
+            drawdown_limit=config.drawdown_limit,
+            fold_count=config.validation_folds,
+        )
+        checkpoint = Path(initial_bundle["checkpoint"])
+        fitted_model = checkpoint.read_bytes()
+        checkpoint = _retain_checkpoint(operational / "checkpoints", str(initial_bundle["model_id"]), fitted_model)
     policy = ProductionPolicyBackend(
         adapter=adapter,
         backend=TorchEvaluationBackend(operational / "checkpoints"),
@@ -472,16 +567,33 @@ def run_dashboard(
         device=device,
         fitted_model=fitted_model,
     )
-    model_compatibility: dict[str, Any] | None = None
-    revision_prepared = False
-    if compatible and revision_required and restored is not None and restored.model_id != "unknown":
-        policy.prepare()
-        model_compatibility = {
-            "model_id": restored.model_id,
-            "method": "production-inference-preflight",
-            "checked_at": datetime.now(tz=UTC).isoformat(),
-        }
-        revision_prepared = True
+    bundle = json.loads(Path(revision_bundle).read_text()) if revision_bundle is not None else None
+    if restored is not None and revision_required:
+        if restored.revision.get("status") == "draining":
+            bundle = restored.revision["validation"]
+        if bundle is None or bundle.get("protocol_id") != config.protocol_id:
+            raise RuntimeError(
+                "Policy Revision requires an offline validated revision bundle; retained model is not relabelled"
+            )
+    if bundle is not None:
+        validate_revision_evidence(
+            bundle,
+            protocol_id=config.protocol_id,
+            model_id=str(bundle.get("model_id")),
+            drawdown_limit=config.drawdown_limit,
+            fold_count=config.validation_folds,
+        )
+        if bundle.get("compatibility") != config.compatibility_manifest:
+            raise ValueError("revision bundle has different account semantics")
+    if restored is None:
+        evidence_path = operational.parent / "evidence" / "evidence-state.json"
+        evidence = json.loads(evidence_path.read_text()) if evidence_path.exists() else {}
+        if bundle is None and (
+            not evidence.get("validation_passed") or evidence.get("validated_protocol") != config.protocol_id
+        ):
+            raise RuntimeError("Flat Start requires validation for the current Policy Protocol")
+        if bundle is None and sha256(fitted_model).hexdigest() != evidence.get("validated_model_hash"):
+            raise RuntimeError("Flat Start checkpoint does not match the validated model identity")
     app = create_application(
         database_path=database_path,
         backup_directory=operational / "backups",
@@ -494,22 +606,30 @@ def run_dashboard(
         simulation_config=replace(simulation_config_for_policy(config, mode="paper"), tickers=account_tickers),
         starting_equity=config.initial_equity,
         operator_interval_seconds=float(config.mark_minutes * 60),
-        policy_preparer=policy.prepare if compatible and not revision_prepared else None,
+        policy_preparer=policy.prepare
+        if compatible or eligibility_revision_is_supported(restored_manifest, config.compatibility_manifest)
+        else None,
     )
     paper = app.state.paper_dashboard
-    if paper.state.protocol_id != config.protocol_id or not paper.state.compatibility_manifest:
-        paper.register_policy_revision(
+    model_id = sha256(fitted_model).hexdigest()
+    if restored is not None and revision_required:
+        assert bundle is not None
+        candidate_path = Path(bundle["checkpoint"])
+        payload = candidate_path.read_bytes()
+        candidate_path = _retain_checkpoint(operational / "checkpoints", str(bundle["model_id"]), payload)
+        candidate = FittedPolicyCandidate(str(bundle["model_id"]), str(candidate_path), payload)
+        paper.stage_policy_revision(
             protocol_id=config.protocol_id,
             compatibility=config.compatibility_manifest,
-            model_compatibility=model_compatibility,
+            candidate=candidate,
+            validation=bundle,
         )
-    model_id = sha256(fitted_model).hexdigest()
-    if compatible and paper.state.model_id == "unknown":
+    elif paper.state.model_id == "unknown":
+        paper.register_policy_revision(protocol_id=config.protocol_id, compatibility=config.compatibility_manifest)
         paper.register_initial_fitted_policy(
-            model_id=model_id,
-            checkpoint=str(checkpoint),
+            model_id=model_id, checkpoint=str(checkpoint), fitted_at=bundle.get("fitted_at") if bundle else None
         )
-    elif compatible and paper.state.model_id != model_id:
+    elif paper.state.model_id != model_id:
         raise RuntimeError("the durable Fitted Policy differs from the selected production checkpoint")
     uvicorn.run(app, host=host, port=port)
 
