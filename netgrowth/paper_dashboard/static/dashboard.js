@@ -31,6 +31,7 @@
   const asArray = (value) => (Array.isArray(value) ? value : []);
   const first = (...values) => values.find((value) => value !== undefined && value !== null);
   const number = (value) => {
+    if (value === null || value === undefined || value === "" || typeof value === "boolean") return null;
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
   };
@@ -134,6 +135,11 @@
       .replace(/\b\w/g, (character) => character.toUpperCase());
   }
 
+  function sentenceCase(value) {
+    const label = humanize(String(value));
+    return label ? `${label.charAt(0)}${label.slice(1).toLowerCase()}` : label;
+  }
+
   function formatUnknown(value, key = "") {
     if (value === null || value === undefined || value === "") return "—";
     if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -185,8 +191,6 @@
     const banner = $("connection-banner");
     banner.textContent = `The local service did not return a current dashboard snapshot: ${error.message}`;
     banner.hidden = false;
-    $("freshness-pill").textContent = "Unavailable";
-    $("freshness-pill").className = "status-pill status-danger";
   }
 
   function clearConnectionError() {
@@ -210,12 +214,19 @@
     ]);
   }
 
-  function heroCard(label, value, detail = "") {
-    return element("article", { className: "hero-card" }, [
-      element("span", { className: "label", text: label }),
-      element("strong", { className: "value", text: value }),
-      element("span", { className: "detail", text: detail }),
+  function statusItem(label, value, detail = "", tone = "neutral") {
+    return element("div", { className: `status-item status-item-${tone}` }, [
+      element("span", { className: "status-item-label", text: label }),
+      element("strong", { text: value }),
+      detail ? element("span", { className: "status-item-detail", text: detail }) : null,
     ]);
+  }
+
+  function preserveFocus(render) {
+    const active = document.activeElement;
+    const focusKey = active?.dataset?.focusKey;
+    render();
+    if (focusKey) document.querySelector(`[data-focus-key="${CSS.escape(focusKey)}"]`)?.focus();
   }
 
   function sentiment(value, inverted = false) {
@@ -232,7 +243,6 @@
       account: first(live.account, live.paper_account, {}),
       risk: first(live.risk, live.risk_metrics, {}),
       freshness: first(live.freshness, live.market_feed, live.data_status, {}),
-      activity: first(live.activity, live.activity_metrics, {}),
       fitting: first(live.fitting, live.fit, {}),
     };
   }
@@ -299,96 +309,116 @@
       const results = await Promise.allSettled(tasks);
       const rejected = results.find((result) => result.status === "rejected");
       if (rejected) throw rejected.reason;
-      $("last-refresh").textContent = `Last refreshed ${formatDateTime(Date.now(), { seconds: true, zone: true })} · ${formatDateTime(Date.now(), { utc: true, seconds: true, zone: true })}`;
+      $("last-refresh").textContent = `Updated ${formatDateTime(Date.now(), { seconds: true, zone: true })}`;
     } catch (error) {
       setConnectionError(error instanceof Error ? error : new Error(String(error)));
     }
   }
 
   function renderLive() {
-    const { live, account, risk, freshness, activity, fitting } = liveParts();
+    const { live, account, risk, freshness, fitting } = liveParts();
     const accountId = first(account.id, account.account_id, live.account_id, "Unidentified account");
     const lifecycle = first(account.state, account.lifecycle_state, live.state, "Unknown");
     const asOf = first(live.as_of, live.observed_at, freshness.observed_at);
-    $("live-subtitle").textContent = `${accountId} · ${lifecycle} · snapshot ${formatDateTime(asOf, { full: true, seconds: true, zone: true })}`;
+    $("live-subtitle").textContent = `${accountId} · snapshot ${formatDateTime(asOf, { full: true, seconds: true, zone: true })}`;
 
     const status = String(first(freshness.status, freshness.state, "Unknown"));
     const statusLower = status.toLowerCase();
-    const freshnessPill = $("freshness-pill");
-    freshnessPill.textContent = status;
-    freshnessPill.className = `status-pill ${statusLower.includes("fresh") && !statusLower.includes("stale") ? "status-good" : statusLower.includes("stale") || statusLower.includes("error") ? "status-danger" : "status-warning"}`;
-
-    const operatingWindow = first(live.operating_window, live.current_operating_window, {});
     const nextDecision = first(live.next_decision_at, live.next_signal_at, account.next_decision_at);
     const pendingFill = first(live.pending_fill, live.pending_change, account.pending_fill);
     const observedAt = first(freshness.observed_at, freshness.last_observation_at, live.as_of);
     const ageSeconds = first(freshness.age_seconds, observedAt ? (Date.now() - timestamp(observedAt)) / 1000 : null);
-    const fittingStatus = first(fitting.status, fitting.state, "Unknown");
-    const overview = [
-      heroCard("Lifecycle", lifecycle, `Account ${accountId} · version ${first(account.version, live.version, "—")}`),
-      heroCard(
-        "Operating window",
-        operatingWindow.started_at ? "Active" : first(operatingWindow.status, "Not reported"),
-        operatingWindow.started_at ? `Started ${formatDateTime(operatingWindow.started_at, { full: true, zone: true })}` : formatUnknown(operatingWindow),
-      ),
-      heroCard("Market data", status, `${duration(ageSeconds)} old · ${freshness.error || freshness.last_error || "no active error"}`),
-      heroCard("Next decision", nextDecision ? formatDateTime(nextDecision, { seconds: true, zone: true }) : "Not scheduled", nextDecision ? `Due in ${duration((timestamp(nextDecision) - Date.now()) / 1000)}` : "No decision countdown"),
-      heroCard(
-        "Pending fill",
-        pendingFill ? first(pendingFill.status, pendingFill.outcome, "Pending") : "None",
-        pendingFill ? formatUnknown(pendingFill) : "No Portfolio Change awaiting execution",
-      ),
-      heroCard(
-        "Policy fitting",
-        humanize(fittingStatus),
-        fittingDetail(fitting),
+    const ageDetail = number(ageSeconds) === null ? "Age unavailable" : `${duration(ageSeconds)} old`;
+    const fittingStatus = String(first(fitting.status, fitting.state, "Unknown"));
+    const lifecycleLower = String(lifecycle).toLowerCase();
+    const marketIsFresh = statusLower.includes("fresh") && !statusLower.includes("stale");
+    const decisionBlocker = live.decision_blocker;
+    const canTrade = decisionBlocker === null;
+    const blockerDetails = {
+      account_not_trading: `Account is ${sentenceCase(lifecycle)}`,
+      market_data_unavailable: `Market data is ${sentenceCase(status)}`,
+      policy_preparing: "Model preparation is in progress",
+      revision_draining: "Policy revision is waiting for pending work to finish",
+      pending_execution: "Waiting for the pending execution",
+    };
+    const statusItems = [
+      statusItem("Account status", sentenceCase(lifecycle), "", /(risk|migration|error|reset)/.test(lifecycleLower) ? "danger" : canTrade ? "good" : "warning"),
+      statusItem("Market data", status, `${ageDetail}${freshness.error || freshness.last_error ? ` · ${first(freshness.error, freshness.last_error)}` : ""}`, marketIsFresh ? "good" : statusLower.includes("stale") || statusLower.includes("error") || statusLower.includes("unavailable") ? "danger" : "warning"),
+      statusItem(
+        "Next decision",
+        canTrade && nextDecision ? formatDateTime(nextDecision, { seconds: true, zone: true }) : canTrade ? "Not scheduled" : "Suspended",
+        canTrade && nextDecision ? `Due in ${duration((timestamp(nextDecision) - Date.now()) / 1000)}` : canTrade ? "No decision countdown" : blockerDetails[decisionBlocker] ?? "Decision scheduling is suspended",
+        canTrade ? "neutral" : "warning",
       ),
     ];
-    $("live-overview").replaceChildren(...overview);
+    if (pendingFill) {
+      const pendingDetails = [
+        pendingFill.eligible_at ? `Eligible ${formatDateTime(pendingFill.eligible_at, { seconds: true, zone: true })}` : null,
+        pendingFill.expires_at ? `Expires ${formatDateTime(pendingFill.expires_at, { seconds: true, zone: true })}` : null,
+      ].filter(Boolean).join(" · ");
+      statusItems.push(statusItem("Pending execution", "Waiting for execution", pendingDetails, "warning"));
+    }
+    const fittingLower = fittingStatus.toLowerCase();
+    if (!["unknown", "idle", "ready", "complete", "completed", "succeeded"].includes(fittingLower)) {
+      statusItems.push(statusItem("Model training", sentenceCase(fittingStatus), fittingDetail(fitting), fittingLower.includes("fail") || fitting.error || fitting.last_error ? "danger" : "warning"));
+    }
+    $("live-status").replaceChildren(...statusItems);
+
+    const netPnl = first(account.net_pnl, account.pnl);
+    const totalReturn = first(account.compounded_net_return, account.net_return);
+    const drawdown = first(risk.current_drawdown, risk.drawdown);
+    const drawdownLimit = first(risk.drawdown_limit, risk.max_drawdown_limit);
+    const grossExposure = first(risk.gross_exposure, account.gross_exposure);
+    const hold = first(live.hold_benchmark, account.hold_benchmark);
+    const holdStart = isObject(hold) ? first(hold.started_at, hold.start_time, hold.revision_started_at) : null;
+    const primaryMetrics = [
+      ["Account value", formatMoney(first(account.current_equity, account.marked_equity, live.marked_equity)), "Current marked balance"],
+      ["Net profit/loss", formatMoney(netPnl), `Account lifetime · total return ${formatPercent(totalReturn)}`, sentiment(netPnl)],
+      ["Performance vs hold", isObject(hold) ? formatMoney(hold.excess_pnl) : "—", isObject(hold) ? `${formatPercent(hold.excess_return)}${holdStart ? ` since ${formatDateTime(holdStart, { full: true })}` : " since benchmark start"}` : "Hold comparison unavailable", isObject(hold) ? sentiment(hold.excess_pnl) : null],
+      ["Current drawdown", formatPercent(drawdown), `Below peak · stop limit ${formatPercent(drawdownLimit)}`, sentiment(drawdown, true)],
+      ["Gross exposure", formatPercent(grossExposure), "Total absolute position value as a share of account value"],
+    ];
+    $("primary-metrics").replaceChildren(...primaryMetrics.map((metric) => metricCard(...metric)));
 
     const accountMetrics = [
       ["Starting equity", formatMoney(first(account.starting_equity, account.initial_equity))],
-      ["Current Marked Equity", formatMoney(first(account.current_equity, account.marked_equity, live.marked_equity))],
       ["Cash", formatMoney(first(account.cash, account.cash_balance))],
-      ["Net P&L", formatMoney(first(account.net_pnl, account.pnl)), "Reconciles to Marked Equity", sentiment(first(account.net_pnl, account.pnl))],
-      ["Compounded Net Return", formatPercent(first(account.compounded_net_return, account.net_return)), "Development evidence only", sentiment(first(account.compounded_net_return, account.net_return))],
       ["Gross trading P&L", formatMoney(first(account.gross_trading_pnl, account.gross_pnl)), "Before cost and funding", sentiment(first(account.gross_trading_pnl, account.gross_pnl))],
-      ["Transaction Cost", formatMoney(first(account.transaction_cost, account.transaction_costs, account.costs)), "All-in adverse execution cost", "negative"],
+      ["Transaction cost", formatMoney(first(account.transaction_cost, account.transaction_costs, account.costs)), "All-in adverse execution cost", "negative"],
       ["Funding paid / received", formatMoney(first(account.funding, account.funding_pnl, account.funding_cashflow)), "Separate from Transaction Cost", sentiment(first(account.funding, account.funding_pnl, account.funding_cashflow))],
       ["Turnover", formatMoney(first(account.turnover, account.total_turnover)), "Executed Portfolio Changes"],
       ["Composed equity", formatMoney(first(account.marked_equity_reconciliation?.composed_equity, account.composed_equity)), "Cash balance + unrealized P&L"],
       ["Reconciliation difference", formatMoney(first(account.marked_equity_reconciliation?.difference, account.reconciliation_difference)), "Composed equity + difference = authoritative Marked Equity", sentiment(first(account.marked_equity_reconciliation?.difference, account.reconciliation_difference), true)],
     ];
-    const hold = first(live.hold_benchmark, account.hold_benchmark);
-    if (isObject(hold)) {
-      accountMetrics.push(
-        ["Hold benchmark", formatMoney(hold.equity), "Positions held from the revision start"],
-        ["Account vs hold", formatMoney(hold.excess_pnl), `${formatPercent(hold.excess_return)} difference`, sentiment(hold.excess_pnl)],
-        ["Hold return", formatPercent(hold.compounded_net_return), `Maximum drawdown ${formatPercent(hold.maximum_drawdown)}`, sentiment(hold.compounded_net_return)],
-        ["Hold funding", formatMoney(hold.funding), `Gross exposure ${formatPercent(hold.gross_exposure)}`, sentiment(hold.funding)],
-      );
-    }
-    $("account-metrics").replaceChildren(...accountMetrics.map((metric) => metricCard(...metric)));
+    $("financial-accounting").replaceChildren(...accountMetrics.map((metric) => metricCard(...metric)));
 
     const concentration = first(risk.concentrations, risk.per_instrument_concentration, {});
     const concentrationText = isObject(concentration)
       ? Object.entries(concentration).map(([ticker, value]) => `${ticker} ${formatPercent(value)}`).join(" · ") || "—"
       : formatUnknown(concentration);
     const riskMetrics = [
-      ["Current drawdown", formatPercent(first(risk.current_drawdown, risk.drawdown)), "From high-water equity", sentiment(first(risk.current_drawdown, risk.drawdown), true)],
-      ["Maximum Drawdown", formatPercent(first(risk.maximum_drawdown, risk.max_drawdown)), "Account lifetime", sentiment(first(risk.maximum_drawdown, risk.max_drawdown), true)],
+      ["Maximum drawdown", formatPercent(first(risk.maximum_drawdown, risk.max_drawdown)), "Account lifetime", sentiment(first(risk.maximum_drawdown, risk.max_drawdown), true)],
       ["High-water equity", formatMoney(first(risk.high_water_equity, risk.equity_high_water))],
-      ["Drawdown Limit", formatPercent(first(risk.drawdown_limit, risk.max_drawdown_limit, 0.2)), "Risk Stop at breach"],
-      ["Gross exposure", formatPercent(first(risk.gross_exposure, account.gross_exposure))],
+      ["Drawdown limit", formatPercent(drawdownLimit), "Trading stops at breach"],
       ["Net exposure", formatPercent(first(risk.net_exposure, account.net_exposure))],
-      ["Cash Weight", formatPercent(first(risk.cash_weight, account.cash_weight))],
-      ["Concentration", concentrationText, "Per-instrument Current Weight"],
+      ["Cash weight", formatPercent(first(risk.cash_weight, account.cash_weight))],
+      ["Concentration", concentrationText, "Absolute position weight by instrument"],
     ];
-    $("risk-metrics").replaceChildren(...riskMetrics.map((metric) => metricCard(...metric)));
+    $("financial-risk").replaceChildren(...riskMetrics.map((metric) => metricCard(...metric)));
+
+    const holdMetrics = isObject(hold) ? [
+      ["Hold account value", formatMoney(hold.equity), holdStart ? `Started ${formatDateTime(holdStart, { full: true })}` : "From the current benchmark start"],
+      ["Hold return", formatPercent(hold.compounded_net_return), `Maximum drawdown ${formatPercent(hold.maximum_drawdown)}`, sentiment(hold.compounded_net_return)],
+      ["Hold funding", formatMoney(hold.funding), `Gross exposure ${formatPercent(hold.gross_exposure)}`, sentiment(hold.funding)],
+    ] : [];
+    $("financial-hold-section").hidden = !holdMetrics.length;
+    $("financial-hold").replaceChildren(...holdMetrics.map((metric) => metricCard(...metric)));
 
     renderPositions(asArray(first(live.positions, account.positions)));
-    renderActivity(activity);
-    renderRecentEvents(asArray(first(live.recent_events, live.events, live.recent_activity)));
+    preserveFocus(() => {
+      renderLatestDecision(live.latest_decision);
+      renderRecentTrades(asArray(live.recent_trades));
+    });
     renderTickerOptions();
     updateControlAvailability(lifecycle, risk);
   }
@@ -431,17 +461,22 @@
     $("positions-summary").textContent = `${positions.length} instrument${positions.length === 1 ? "" : "s"}`;
   }
 
-  function renderActivity(activity) {
-    const metrics = [
+  function activityMetrics(activity) {
+    activity = isObject(activity) ? activity : {};
+    return [
       ["All decisions", first(activity.decisions, activity.decision_count)],
       ["Executable changes", first(activity.executable_changes, activity.executable_portfolio_changes)],
       ["Instrument fills", first(activity.fills, activity.instrument_fills)],
       ["Below threshold", first(activity.below_threshold, activity.below_threshold_decisions)],
       ["Unchanged targets", first(activity.unchanged_targets, activity.no_change_decisions)],
-      ["Missed Executions", first(activity.missed_executions, activity.missed_execution_count)],
+      ["Missed executions", first(activity.missed_executions, activity.missed_execution_count)],
       ["Operator interventions", first(activity.interventions, activity.operator_interventions)],
     ];
-    $("activity-metrics").replaceChildren(
+  }
+
+  function renderActivity(activity, targetId) {
+    const metrics = activityMetrics(activity);
+    $(targetId).replaceChildren(
       ...metrics.map(([label, value]) => element("div", { className: "activity-item" }, [
         element("span", { text: label }),
         element("strong", { text: formatNumber(value, 0) }),
@@ -449,13 +484,56 @@
     );
   }
 
-  function renderRecentEvents(events) {
-    const list = $("recent-activity");
-    if (!events.length) {
-      list.replaceChildren(element("li", { className: "empty-state", text: "No material account events are retained yet." }));
+  function renderLatestDecision(decision) {
+    const target = $("latest-decision");
+    if (!isObject(decision)) {
+      target.replaceChildren(element("p", { className: "empty-state compact-empty", text: "No policy decision has been recorded yet." }));
       return;
     }
-    list.replaceChildren(...events.slice(0, 10).map((event) => eventListItem(event)));
+    const threshold = String(first(decision.threshold_outcome, "unknown")).toLowerCase();
+    const execution = String(first(decision.execution_status, "unknown")).toLowerCase();
+    const outcomes = {
+      unchanged: "Targets unchanged",
+      below_threshold: "No trade: proposed change below threshold",
+      executable: execution === "executed"
+        ? "Portfolio change executed"
+        : execution === "missed"
+          ? "Execution missed"
+          : execution === "cancelled"
+            ? "Execution cancelled"
+            : "Portfolio change awaiting execution",
+    };
+    const tone = execution === "missed" || execution === "cancelled" ? "negative" : execution === "executed" ? "positive" : null;
+    const button = element("button", {
+      className: "latest-decision-button",
+      attributes: {
+        type: "button",
+        "aria-label": `Open latest decision: ${outcomes[threshold] ?? humanize(threshold)}`,
+        "data-focus-key": `latest-decision:${first(decision.event_id, decision.decision_id, "unknown")}`,
+      },
+    }, [
+      element("strong", { className: tone ? `value-${tone}` : "", text: outcomes[threshold] ?? humanize(threshold) }),
+      timeNode(first(decision.signal_time, decision.time), { full: true, seconds: true }),
+      element("span", { className: "event-summary", text: `Execution status: ${sentenceCase(execution)}` }),
+    ]);
+    button.addEventListener("click", () => openEvent(first(decision.event_id, decision.decision_id)));
+    target.replaceChildren(button);
+  }
+
+  function renderRecentTrades(events) {
+    const list = $("recent-trades");
+    if (!events.length) {
+      list.replaceChildren(element("li", { className: "empty-state", text: "No simulated trades have executed yet. Decisions alone do not change positions." }));
+      return;
+    }
+    list.replaceChildren(...events.slice(0, 5).map((event) => eventListItem(event)));
+  }
+
+  function eventSummary(event) {
+    if (isObject(event.trade)) {
+      return `${formatNumber(event.trade.quantity, 8)} at ${formatMoney(event.trade.price)} · Cost ${formatMoney(event.trade.cost)}`;
+    }
+    return first(event.summary, event.outcome, event.type, "Open event detail");
   }
 
   function eventListItem(event) {
@@ -464,12 +542,12 @@
     const title = first(event.title, event.label, humanize(type));
     const button = element("button", {
       className: "event-button",
-      attributes: { type: "button", "aria-label": `Open ${type} event: ${title}` },
+      attributes: { type: "button", "aria-label": `Open simulated trade: ${title}`, "data-focus-key": `recent-trade:${eventId}` },
     }, [
       timeNode(first(event.time, event.timestamp, event.at), { seconds: false }),
       element("span", {}, [
         element("span", { className: "event-title", text: title }),
-        element("span", { className: "event-summary", text: first(event.summary, event.outcome, type) }),
+        element("span", { className: "event-summary", text: eventSummary(event) }),
       ]),
     ]);
     button.addEventListener("click", () => openEvent(eventId));
@@ -495,6 +573,10 @@
     const grossExposure = number(first(risk.gross_exposure, state.live?.account?.gross_exposure)) ?? 0;
     const available = first(state.live?.controls, state.live?.control_availability, {});
     const buttons = Object.fromEntries([...document.querySelectorAll("[data-control]")].map((button) => [button.dataset.control, button]));
+    const isTrading = normalized.includes("trading");
+    const isPaused = normalized.includes("paused");
+    buttons.pause.hidden = !isTrading;
+    buttons.resume.hidden = !isPaused;
     buttons.pause.disabled = available.pause !== undefined ? !available.pause : !normalized.includes("trading");
     buttons.resume.disabled = available.resume !== undefined
       ? !available.resume
@@ -522,20 +604,26 @@
 
     const events = asArray(first(history.events, history.timeline, history.items));
     const eventTypes = [...new Set(events.map((event) => first(event.type, event.event_type, "Event")))].sort();
+    const filterTypes = ["InstrumentFilled", ...eventTypes.filter((type) => type !== "InstrumentFilled")];
     const eventTypeSelect = $("event-type-select");
     const availableValues = [...eventTypeSelect.options].map((option) => option.value);
-    if (eventTypes.some((type) => !availableValues.includes(type))) {
+    const filterValues = ["all", ...filterTypes];
+    if (filterValues.length !== availableValues.length || filterValues.some((value, index) => value !== availableValues[index])) {
       eventTypeSelect.replaceChildren(
         element("option", { text: "All material events", attributes: { value: "all" } }),
-        ...eventTypes.map((type) => element("option", { text: humanize(type), attributes: { value: type } })),
+        ...filterTypes.map((type) => element("option", { text: type === "InstrumentFilled" ? "Trades" : humanize(type), attributes: { value: type } })),
       );
     }
-    eventTypeSelect.value = eventTypes.includes(state.eventType) ? state.eventType : "all";
+    eventTypeSelect.value = filterTypes.includes(state.eventType) ? state.eventType : "all";
     state.eventType = eventTypeSelect.value;
     const filtered = state.eventType === "all" ? events : events.filter((event) => first(event.type, event.event_type, "Event") === state.eventType);
-    $("history-count").textContent = `${filtered.length} retained event${filtered.length === 1 ? "" : "s"}`;
-    $("history-events").replaceChildren(...(filtered.length ? filtered.map((event) => timelineItem(event)) : [element("li", { className: "empty-state", text: "No material events match this account and filter." })]));
+    const tradesOnly = state.eventType === "InstrumentFilled";
+    $("history-count").textContent = `${filtered.length} ${tradesOnly ? "simulated trade" : "retained event"}${filtered.length === 1 ? "" : "s"}`;
+    preserveFocus(() => {
+      $("history-events").replaceChildren(...(filtered.length ? filtered.map((event) => timelineItem(event)) : [element("li", { className: "empty-state", text: tradesOnly ? "No simulated trades have executed for this account." : "No material events match this account and filter." })]));
+    });
     renderHistoryComparison(history, accounts);
+    renderActivity(history.activity, "history-activity");
     renderProtocolSegments(history);
   }
 
@@ -545,13 +633,13 @@
     const title = first(event.title, event.label, humanize(type));
     const button = element("button", {
       className: "timeline-event",
-      attributes: { type: "button", "aria-label": `Open ${type} event: ${title}` },
+      attributes: { type: "button", "aria-label": `Open ${type} event: ${title}`, "data-focus-key": `history-event:${eventId}` },
     }, [
       element("span", { className: "timeline-event-topline" }, [
         element("strong", { className: "event-title", text: title }),
-        element("span", { className: "event-type", text: humanize(type) }),
+        element("span", { className: "event-type", text: type === "InstrumentFilled" ? "Simulated trade" : humanize(type) }),
       ]),
-      element("span", { className: "event-summary", text: first(event.summary, event.outcome, event.ticker, "Open durable detail") }),
+      element("span", { className: "event-summary", text: eventSummary(event) }),
     ]);
     button.addEventListener("click", () => openEvent(eventId));
     const time = first(event.time, event.timestamp, event.at);
@@ -566,10 +654,10 @@
     const comparison = history.comparison ?? {};
     const metrics = [
       ["Account", selected.label ?? state.selectedAccount ?? "—"],
-      ["Lifecycle", selected.active ? "Active" : "Archived"],
-      ["Marked Equity", formatMoney(comparison.current_equity)],
-      ["Compounded Net Return", formatPercent(comparison.compounded_net_return)],
-      ["Maximum Drawdown", formatPercent(comparison.maximum_drawdown)],
+      ["Account status", selected.active ? "Active" : "Archived"],
+      ["Account value", formatMoney(comparison.current_equity)],
+      ["Total return", formatPercent(comparison.compounded_net_return)],
+      ["Maximum drawdown", formatPercent(comparison.maximum_drawdown)],
       ["Policy Protocol", comparison.protocol_id ?? "—"],
       ["Started", formatDateTime(selected.started_at, { full: true, zone: true })],
       ["Archived", formatDateTime(selected.archived_at, { full: true, zone: true })],
@@ -631,7 +719,7 @@
     const accepted = [
       ["Market feed", first(system.market_feed, system.freshness, system.data)],
       ["Policy and model", first(system.policy, system.model, system.policy_protocol)],
-      ["Fitting", first(system.fitting, system.fit)],
+      ["Model training", first(system.fitting, system.fit)],
       ["Compute runtime", first(system.compute, system.runtime, system.accelerator)],
       ["Operating windows", first(system.operating_windows, system.windows)],
       ["Notifications", first(system.notifications, system.notification_health)],
@@ -693,7 +781,7 @@
     const header = eventDetailSection("Event", [
       element("span", { className: "detail-badge", text: humanize(event.type) }),
       element("h3", { text: title }),
-      element("p", { className: "detail-intro", text: event.summary ?? "Durable Paper Account history" }),
+      element("p", { className: "detail-intro", text: eventSummary(event) }),
       definitionList({
         event_id: event.id,
         ticker: event.ticker,
@@ -704,7 +792,8 @@
     ]);
     const sections = [header];
     const details = event.details;
-    if (details && Object.keys(details).length && event.type !== "DecisionRecord") {
+    const showEventFacts = !["DecisionRecord", "ModelAttribution", "ModelAttributionFailed"].includes(event.type);
+    if (details && Object.keys(details).length && showEventFacts) {
       sections.push(eventDetailSection("Event facts", [definitionList(details)]));
     }
     const decision = event.decision;
@@ -722,40 +811,11 @@
         definitionList(execution),
       ]));
     }
-    const attribution = event.attribution;
-    if (attribution) sections.push(attributionSection(attribution));
-    else if (decision) {
-      sections.push(eventDetailSection("Model attribution", [
-        element("span", { className: "detail-badge detail-badge-approximate", text: "Attribution pending" }),
-        element("p", { className: "detail-intro", text: "Approximate post-hoc influence evidence has not completed. It cannot delay execution." }),
-      ]));
-    }
     detail.replaceChildren(...sections);
   }
 
   function eventDetailSection(title, children) {
     return element("section", { className: "event-detail-section" }, [element("h3", { text: title }), ...children]);
-  }
-
-  function attributionSection(attribution) {
-    const label = attribution.label ?? "Approximate post-hoc influence evidence";
-    const influences = asArray(attribution.top_influences);
-    const influenceList = element("ol", { className: "influence-list" }, influences.map((influence) => element("li", {}, [
-      element("span", { text: influence.label ?? "Influence" }),
-      element("strong", { text: formatNumber(influence.value, 5) }),
-    ])));
-    return eventDetailSection("Model attribution", [
-      element("span", { className: "detail-badge detail-badge-approximate", text: label }),
-      element("p", { className: "detail-intro", text: "Influence evidence is approximate and post-hoc; it is not a causal explanation, trade reason, or profitability claim." }),
-      influences.length ? influenceList : element("p", { className: "detail-intro", text: attribution.status ?? "No top influences reported" }),
-      definitionList({
-        status: attribution.status,
-        method: attribution.method,
-        parameters: attribution.parameters,
-        input_hash: attribution.input_hash,
-        model_hash: attribution.model_hash,
-      }),
-    ]);
   }
 
   const controls = {
@@ -768,15 +828,15 @@
       description: "Resume permits decisions from the next naturally due closed Decision Bar. It never replays decisions missed while paused.",
     },
     flatten: {
-      label: "Flatten and pause",
+      label: "Close all positions and pause",
       confirmation: "FLATTEN",
-      description: "Flatten and pause cancels pending policy work and targets all exposure flat at the next fresh quote, with normal Transaction Cost.",
+      description: "Close all positions and pause cancels pending policy work and targets all exposure flat at the next fresh quote, with normal transaction cost.",
       warning: true,
     },
     reset: {
-      label: "Manual reset",
+      label: "Reset account",
       confirmation: "RESET",
-      description: "Manual reset first flattens exposure, archives this Paper Account, and creates a new $10,000 Flat Start only after flattening succeeds.",
+      description: "Reset account first closes all positions, archives this paper account, and creates a new $10,000 flat start only after closing succeeds.",
       danger: true,
     },
   };
@@ -876,14 +936,9 @@
 
   function updateClocks() {
     const now = Date.now();
-    $("kyiv-clock").textContent = `${formatDateTime(now, { seconds: true })} Kyiv`;
-    $("utc-clock").textContent = `${formatDateTime(now, { utc: true, seconds: true })} UTC`;
-    if (state.live) {
-      const { freshness } = liveParts();
-      const observedAt = first(freshness.observed_at, freshness.last_observation_at, state.live.as_of);
-      const freshnessStatus = first(freshness.status, freshness.state, "Unknown");
-      if (observedAt) $("freshness-pill").textContent = `${freshnessStatus} · ${duration((now - timestamp(observedAt)) / 1000)}`;
-    }
+    const clock = $("kyiv-clock");
+    clock.textContent = `${formatDateTime(now, { seconds: true })} Kyiv`;
+    clock.title = `${formatDateTime(now, { utc: true, seconds: true })} UTC`;
   }
 
   function bindEvents() {
@@ -948,7 +1003,7 @@
     try {
       await loadCsrf();
     } catch (error) {
-      showToast(`Lifecycle controls are unavailable: ${error.message}`);
+      showToast(`Account controls are unavailable: ${error.message}`);
     }
     await refreshAll();
     setInterval(updateClocks, 1000);

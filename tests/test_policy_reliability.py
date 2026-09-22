@@ -113,6 +113,11 @@ def test_revision_waits_for_fill_and_starts_hold_from_identical_positions(tmp_pa
     hold = paper.live_snapshot()["hold_benchmark"]
     assert hold["equity"] == paper.state.simulation.equity
     assert hold["excess_pnl"] == 0
+    assert hold["started_at"] == clock.current.isoformat()
+    active_revision = paper.state.revision
+    paper.state.revision = {"status": "draining"}
+    assert paper.live_snapshot()["hold_benchmark"]["started_at"] == clock.current.isoformat()
+    paper.state.revision = active_revision
     quantities = paper.state.simulation.quantities.copy()
     paper.close()
     paper = create_application(database_path=tmp_path / "paper.db", clock=clock).state.paper_dashboard

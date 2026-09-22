@@ -6,9 +6,10 @@
     <meta name="color-scheme" content="dark">
     <meta name="description" content="Local persistent paper-account dashboard">
     <title>Net Growth · Paper account</title>
-    <link rel="stylesheet" href="/styles.css">
-    <script src="/financial-chart.js" defer></script>
-    <script src="/dashboard.js" defer></script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/styles.css?v=20260922">
+    <script src="/financial-chart.js?v=20260922" defer></script>
+    <script src="/dashboard.js?v=20260922" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to dashboard content</a>
@@ -16,17 +17,13 @@
       <div class="brand-lockup">
         <div class="brand-mark" aria-hidden="true">NG</div>
         <div>
-          <p class="eyebrow">Persistent paper trading</p>
           <p class="brand-name">Net Growth</p>
         </div>
       </div>
       <div class="header-readouts">
-        <div id="freshness-pill" class="status-pill status-neutral">Connecting</div>
         <div class="clock-block">
           <span id="kyiv-clock" class="clock-primary">--:--:--</span>
-          <span id="utc-clock" class="clock-secondary">--:--:-- UTC</span>
         </div>
-        <span class="local-badge">Localhost only</span>
       </div>
     </header>
 
@@ -38,42 +35,58 @@
         <button id="tab-history" class="view-tab" type="button" role="tab" aria-controls="view-history" aria-selected="false" data-view="history" tabindex="-1">History</button>
         <button id="tab-system" class="view-tab" type="button" role="tab" aria-controls="view-system" aria-selected="false" data-view="system" tabindex="-1">System</button>
       </div>
-      <p class="refresh-note">Financial state refreshes every minute · clocks update every second</p>
     </nav>
 
     <main id="main-content" class="page-shell">
       <section id="view-live" class="view-panel" role="tabpanel" aria-labelledby="tab-live">
         <div class="view-heading">
           <div>
-            <p class="eyebrow">Live operating view</p>
             <h1>Paper account</h1>
             <p id="live-subtitle" class="view-subtitle">Loading the durable account snapshot…</p>
           </div>
           <div id="account-controls" class="account-controls" aria-label="Paper account lifecycle controls">
             <button class="button button-secondary" type="button" data-control="pause">Pause</button>
             <button class="button button-secondary" type="button" data-control="resume">Resume</button>
-            <button class="button button-warning" type="button" data-control="flatten">Flatten and pause</button>
-            <button class="button button-danger" type="button" data-control="reset">Manual reset</button>
+            <details id="account-actions" class="action-disclosure">
+              <summary class="button">Account actions</summary>
+              <div class="action-menu">
+                <button class="button button-warning" type="button" data-control="flatten">Close all positions and pause</button>
+                <button class="button button-danger" type="button" data-control="reset">Reset account</button>
+              </div>
+            </details>
           </div>
         </div>
 
-        <section id="live-overview" class="hero-grid" aria-label="Account and service overview"></section>
+        <section id="live-status" class="status-strip" aria-label="Account and service status"></section>
 
         <div class="section-heading">
           <div>
-            <p class="eyebrow">Marked account</p>
-            <h2>Account and risk</h2>
+            <h2>Account performance</h2>
           </div>
-          <p>Marked Equity is authoritative; component P&amp;L is a reconciliation aid.</p>
         </div>
-        <section id="account-metrics" class="metric-grid" aria-label="Account metrics"></section>
-        <section id="risk-metrics" class="metric-grid metric-grid-compact" aria-label="Risk metrics"></section>
+        <section id="primary-metrics" class="metric-grid primary-metrics" aria-label="Primary account metrics"></section>
+        <details id="financial-details" class="financial-details">
+          <summary>Financial details</summary>
+          <div class="financial-detail-groups">
+            <section aria-labelledby="financial-accounting-heading">
+              <h3 id="financial-accounting-heading">Accounting</h3>
+              <div id="financial-accounting" class="metric-grid metric-grid-compact"></div>
+            </section>
+            <section aria-labelledby="financial-risk-heading">
+              <h3 id="financial-risk-heading">Risk</h3>
+              <div id="financial-risk" class="metric-grid metric-grid-compact"></div>
+            </section>
+            <section id="financial-hold-section" aria-labelledby="financial-hold-heading">
+              <h3 id="financial-hold-heading">Hold comparison</h3>
+              <div id="financial-hold" class="metric-grid metric-grid-compact"></div>
+            </section>
+          </div>
+        </details>
 
         <div class="dashboard-grid">
           <section class="surface positions-surface" aria-labelledby="positions-heading">
             <div class="surface-heading">
               <div>
-                <p class="eyebrow">Current portfolio</p>
                 <h2 id="positions-heading">Positions</h2>
               </div>
               <p id="positions-summary" class="surface-note"></p>
@@ -102,23 +115,21 @@
           <section class="surface activity-surface" aria-labelledby="activity-heading">
             <div class="surface-heading">
               <div>
-                <p class="eyebrow">Policy and operator</p>
-                <h2 id="activity-heading">Activity</h2>
+                <h2 id="activity-heading">Latest decision</h2>
               </div>
             </div>
-            <div id="activity-metrics" class="activity-grid"></div>
+            <div id="latest-decision" class="latest-decision"></div>
             <div class="subsection-heading">
-              <h3>Recent material events</h3>
-              <span>Newest first</span>
+              <h3>Recent simulated trades</h3>
+              <span>Executed · newest first</span>
             </div>
-            <ol id="recent-activity" class="event-list"></ol>
+            <ol id="recent-trades" class="event-list"></ol>
           </section>
         </div>
 
         <section class="surface chart-surface" aria-labelledby="chart-heading">
           <div class="surface-heading chart-toolbar">
             <div>
-              <p class="eyebrow">Synchronized financial history</p>
               <h2 id="chart-heading">Price and portfolio</h2>
             </div>
             <div class="chart-selectors">
@@ -143,14 +154,13 @@
             <span><i class="legend-gap"></i>Downtime / reconstructed gap</span>
           </div>
           <div id="financial-chart" class="financial-chart" aria-busy="true"></div>
-          <p class="chart-footnote">Material markers are never downsampled. Activate a marker for its durable event, exact Decision Record, execution outcome, and attribution.</p>
+          <p class="chart-footnote">Select a marker to view its event and decision details.</p>
         </section>
       </section>
 
       <section id="view-history" class="view-panel" role="tabpanel" aria-labelledby="tab-history" hidden>
         <div class="view-heading">
           <div>
-            <p class="eyebrow">Durable event ledger</p>
             <h1>Account history</h1>
             <p class="view-subtitle">Policy decisions, executions, funding, recovery, lifecycle interventions, and immutable archives.</p>
           </div>
@@ -168,10 +178,18 @@
           </div>
         </div>
         <section id="history-comparison" class="metric-grid metric-grid-compact" aria-label="Account comparison"></section>
+        <section class="surface history-activity-surface" aria-labelledby="history-activity-heading">
+          <div class="surface-heading">
+            <div>
+              <h2 id="history-activity-heading">Account activity</h2>
+              <p class="surface-note">Account-lifetime totals for the selected account</p>
+            </div>
+          </div>
+          <div id="history-activity" class="activity-grid"></div>
+        </section>
         <section class="surface" aria-labelledby="protocol-segments-heading">
           <div class="surface-heading">
             <div>
-              <p class="eyebrow">Compatible revision boundaries</p>
               <h2 id="protocol-segments-heading">Policy Protocol segments</h2>
             </div>
           </div>
@@ -180,7 +198,6 @@
         <section class="surface timeline-surface" aria-labelledby="timeline-heading">
           <div class="surface-heading">
             <div>
-              <p class="eyebrow">Monotonic order</p>
               <h2 id="timeline-heading">Event timeline</h2>
             </div>
             <p id="history-count" class="surface-note"></p>
@@ -192,9 +209,8 @@
       <section id="view-system" class="view-panel" role="tabpanel" aria-labelledby="tab-system" hidden>
         <div class="view-heading">
           <div>
-            <p class="eyebrow">Operational diagnostics</p>
             <h1>System health</h1>
-            <p class="view-subtitle">Market feed, policy identity, fitting, local persistence, notifications, backups, and service state.</p>
+            <p class="view-subtitle">Market data, model training, persistence, notifications, backups, and service state.</p>
           </div>
         </div>
         <div id="system-sections" class="system-grid"></div>
@@ -202,7 +218,7 @@
     </main>
 
     <footer class="site-footer">
-      <p>Paper-only development evidence. No exchange credentials, real orders, manual trades, or claim of proven profitability.</p>
+      <p>Paper trading only. Performance shown here does not establish future profitability.</p>
       <p id="last-refresh">Not yet refreshed</p>
     </footer>
 

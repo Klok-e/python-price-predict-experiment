@@ -206,6 +206,24 @@ async def control_headers(client: httpx.AsyncClient, key: str) -> dict[str, str]
 
 
 @pytest.mark.anyio
+async def test_dashboard_assets_require_cache_revalidation(tmp_path) -> None:
+    app = make_app(
+        tmp_path / "paper.sqlite3",
+        FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC)),
+        FakeFeed([]),
+        FakePolicy([]),
+    )
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            for path in ("/", "/history", "/system", "/dashboard.js", "/financial-chart.js", "/styles.css"):
+                response = await client.get(path)
+                assert response.status_code == 200
+                assert response.headers.get("cache-control") == "no-cache", path
+    finally:
+        app.state.paper_dashboard.close()
+
+
+@pytest.mark.anyio
 async def test_complete_application_marks_decides_fills_and_restores_the_same_account(tmp_path) -> None:
     database = tmp_path / "paper.sqlite3"
     clock = FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC))
@@ -217,11 +235,22 @@ async def test_complete_application_marks_decides_fills_and_restores_the_same_ac
         account_id = initial["account"]["id"]
         assert initial["account"]["current_equity"] == 10_000.0
         assert initial["positions"] == []
+        assert initial["recent_trades"] == []
+        assert initial["latest_decision"] is None
+        assert initial["decision_blocker"] is None
 
         app.state.paper_dashboard.advance_once_sync()
         scheduled = (await client.get("/api/live")).json()
         assert scheduled["pending_fill"]["decision_id"]
         assert scheduled["activity"]["decisions"] == 1
+        assert scheduled["decision_blocker"] == "pending_execution"
+        assert scheduled["latest_decision"] == {
+            "event_id": next(event["id"] for event in scheduled["recent_events"] if event["type"] == "DecisionRecord"),
+            "decision_id": scheduled["pending_fill"]["decision_id"],
+            "signal_time": observation(0).timestamp.isoformat(),
+            "threshold_outcome": "executable",
+            "execution_status": "pending",
+        }
 
         app.state.paper_dashboard.advance_once_sync()
         filled = (await client.get("/api/live")).json()
@@ -230,6 +259,7 @@ async def test_complete_application_marks_decides_fills_and_restores_the_same_ac
         assert filled["positions"][0]["unrealized_pnl"] == 0.0
         assert filled["account"]["transaction_cost"] > 0.0
         assert filled["activity"]["fills"] == 1
+        assert filled["latest_decision"]["execution_status"] == "executed"
         assert {event["type"] for event in filled["recent_events"]} >= {
             "PortfolioChangeExecuted",
             "InstrumentFilled",
@@ -247,6 +277,213 @@ async def test_complete_application_marks_decides_fills_and_restores_the_same_ac
             dict.fromkeys(event["id"] for event in history["events"])
         )
     restored_app.state.paper_dashboard.close()
+
+
+@pytest.mark.anyio
+async def test_recent_trades_are_signed_fills_from_full_history_newest_first(tmp_path) -> None:
+    targets = [
+        {"BTCUSDT": -0.1, "ETHUSDT": 0.1, "BNBUSDT": -0.1, "SOLUSDT": 0.1},
+        dict.fromkeys(TICKERS, 0.0),
+    ]
+    app = make_app(
+        tmp_path / "paper.sqlite3",
+        FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC)),
+        FakeFeed([]),
+        FakePolicy(targets),
+    )
+    paper = app.state.paper_dashboard
+    quote_seconds = dict(zip(TICKERS, (40, 10, 30, 20), strict=True))
+    for offset in range(4):
+        observed = observation(offset, decision=offset % 2 == 0)
+        if offset % 2 == 1:
+            observed = replace(
+                observed,
+                quote_exchange_times={
+                    ticker: observed.timestamp + timedelta(seconds=quote_seconds[ticker]) for ticker in TICKERS
+                },
+                quote_observed_at=observed.timestamp + timedelta(seconds=50),
+            )
+        paper.advance_once_sync(observed)
+
+    fills = [event for event in paper.store.events() if event.event_type == "InstrumentFilled"]
+    assert len(fills) == 8
+    assert ["buy" if float(event.payload["quantity"]) > 0.0 else "sell" for event in fills] == [
+        "sell",
+        "buy",
+        "sell",
+        "buy",
+        "buy",
+        "sell",
+        "buy",
+        "sell",
+    ]
+
+    paper._commit(
+        [
+            (
+                "PolicyFitProgress",
+                observation(4).timestamp + timedelta(seconds=offset),
+                {"step": offset},
+                None,
+                None,
+            )
+            for offset in range(25)
+        ]
+    )
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        live = (await client.get("/api/live")).json()
+        history = (await client.get("/api/history")).json()
+        chart = (await client.get("/api/chart", params={"ticker": "BTCUSDT"})).json()
+        details = {
+            trade["id"]: (await client.get(f"/api/events/{trade['id']}")).json() for trade in live["recent_trades"]
+        }
+
+    history_fills = [event for event in history["events"] if event["type"] == "InstrumentFilled"]
+    assert all(event["type"] != "InstrumentFilled" for event in live["recent_events"])
+    sequence_order = [event["id"] for event in reversed(history_fills[-5:])]
+    chronological_order = [
+        event["id"]
+        for event in sorted(
+            history_fills,
+            key=lambda event: (datetime.fromisoformat(event["time"]), event["sequence"]),
+            reverse=True,
+        )[:5]
+    ]
+    assert chronological_order != sequence_order
+    assert [trade["id"] for trade in live["recent_trades"]] == chronological_order
+    assert [datetime.fromisoformat(trade["time"]) for trade in live["recent_trades"]] == sorted(
+        (datetime.fromisoformat(trade["time"]) for trade in live["recent_trades"]),
+        reverse=True,
+    )
+    assert len(live["recent_trades"]) == 5
+    for trade in live["recent_trades"]:
+        detail = details[trade["id"]]
+        signed_quantity = detail["details"]["quantity"]
+        expected_side = "buy" if signed_quantity > 0.0 else "sell"
+        expected_cost = abs(signed_quantity) * abs(
+            detail["details"]["effective_fill"] - detail["details"]["reference_price"]
+        )
+        assert trade["type"] == "InstrumentFilled"
+        assert trade["title"] == f"{expected_side.title()} {trade['ticker']}"
+        assert trade["trade"] == {
+            "side": expected_side,
+            "quantity": abs(signed_quantity),
+            "price": detail["details"]["effective_fill"],
+            "cost": expected_cost,
+        }
+        assert detail["trade"] == trade["trade"]
+        assert " at " in trade["summary"]
+        assert "cost " in trade["summary"]
+
+    marker_labels = {
+        marker["id"]: marker["label"] for marker in chart["markers"] if marker["type"] == "InstrumentFilled"
+    }
+    assert marker_labels == {event["id"]: event["title"] for event in history_fills if event["ticker"] == "BTCUSDT"}
+    paper.close()
+
+
+@pytest.mark.anyio
+async def test_latest_decision_uses_full_account_history_after_recent_events_roll_over(tmp_path) -> None:
+    unchanged = dict.fromkeys(TICKERS, 0.0)
+    app = make_app(
+        tmp_path / "paper.sqlite3",
+        FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC)),
+        FakeFeed([]),
+        FakePolicy([unchanged]),
+    )
+    paper = app.state.paper_dashboard
+    paper.advance_once_sync(observation(0, decision=True))
+    decision = next(event for event in paper.store.events() if event.event_type == "DecisionRecord")
+    paper._commit(
+        [
+            (
+                "PolicyFitProgress",
+                observation(0).timestamp + timedelta(seconds=offset + 1),
+                {"step": offset},
+                None,
+                None,
+            )
+            for offset in range(25)
+        ]
+    )
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        live = (await client.get("/api/live")).json()
+        paused = await client.post(
+            "/api/controls/pause",
+            json={"expected_version": live["account"]["version"]},
+            headers=await control_headers(client, "pause-completed-decision"),
+        )
+        after_pause = paused.json()
+
+    assert all(event["type"] != "DecisionRecord" for event in live["recent_events"])
+    assert live["latest_decision"] == {
+        "event_id": decision.event_id,
+        "decision_id": decision.decision_id,
+        "signal_time": observation(0).timestamp.isoformat(),
+        "threshold_outcome": "unchanged",
+        "execution_status": "not_required",
+    }
+    assert after_pause["latest_decision"]["execution_status"] == "not_required"
+    paper.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("action", "confirmation"),
+    [("pause", None), ("flatten", "FLATTEN")],
+)
+async def test_operator_control_durably_cancels_latest_pending_decision(
+    tmp_path, action: str, confirmation: str | None
+) -> None:
+    target = {**dict.fromkeys(TICKERS, 0.0), "BTCUSDT": 0.5}
+    app = make_app(
+        tmp_path / f"{action}.sqlite3",
+        FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC)),
+        FakeFeed([]),
+        FakePolicy([target]),
+    )
+    paper = app.state.paper_dashboard
+    paper.advance_once_sync(observation(0, decision=True))
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        before = (await client.get("/api/live")).json()
+        response = await client.post(
+            f"/api/controls/{action}",
+            json={"expected_version": before["account"]["version"], "confirmation": confirmation},
+            headers=await control_headers(client, f"cancel-{action}"),
+        )
+        assert response.status_code == 200
+        live = (await client.get("/api/live")).json()
+        history = (await client.get("/api/history")).json()
+
+    assert live["latest_decision"]["decision_id"] == before["latest_decision"]["decision_id"]
+    assert live["latest_decision"]["execution_status"] == "cancelled"
+    intervention = next(event for event in reversed(history["events"]) if event["type"] == "OperatorIntervention")
+    detail = paper.event_snapshot(intervention["id"])
+    assert detail["details"]["action"] in {"pause", "flatten_and_pause"}
+    assert intervention["sequence"] > next(
+        event["sequence"] for event in history["events"] if event["id"] == before["latest_decision"]["event_id"]
+    )
+    paper.close()
+
+
+def test_live_decision_blocker_reports_policy_preparation_and_revision_draining(tmp_path) -> None:
+    app = make_app(
+        tmp_path / "paper.sqlite3",
+        FakeClock(datetime(2026, 8, 23, 18, 0, tzinfo=UTC)),
+        FakeFeed([]),
+        FakePolicy([]),
+    )
+    paper = app.state.paper_dashboard
+
+    paper._policy_preparing = True
+    assert paper.live_snapshot()["decision_blocker"] == "policy_preparing"
+    paper._policy_preparing = False
+    paper.state.revision = {"status": "draining"}
+    assert paper.live_snapshot()["decision_blocker"] == "revision_draining"
+    paper.close()
 
 
 @pytest.mark.anyio
@@ -369,7 +606,7 @@ async def test_selected_ticker_chart_retains_minute_weights_and_only_its_fill_ma
             "id": fill_markers[0]["id"],
             "time": observation(1).timestamp.isoformat(),
             "type": "InstrumentFilled",
-            "label": "Instrument fill",
+            "label": "Buy BTCUSDT",
             "price": 100.0,
             "ticker": "BTCUSDT",
             "material": True,
@@ -653,6 +890,7 @@ async def test_activity_keeps_operator_fills_out_of_executable_policy_changes(tm
         "missed_executions": 0,
         "interventions": 1,
     }
+    assert history["activity"] == live["activity"]
     assert history["protocol_segments"][0]["executable_changes"] == 1
     paper.close()
 
@@ -807,6 +1045,7 @@ async def test_overdue_pending_change_becomes_one_missed_execution_without_a_fil
         assert live["pending_fill"] is None
         assert live["positions"] == []
         assert live["activity"]["missed_executions"] == 1
+        assert live["latest_decision"]["execution_status"] == "missed"
         history = (await client.get("/api/history")).json()
         assert [event["type"] for event in history["events"]].count("MissedExecution") == 1
         chart = (await client.get("/api/chart", params={"ticker": "BTCUSDT"})).json()
@@ -1033,6 +1272,15 @@ async def test_flatten_and_reset_use_confirmed_serialized_controls(tmp_path) -> 
         history = (await client.get("/api/history")).json()
         assert len(history["accounts"]) == 2
         assert sum(account["active"] for account in history["accounts"]) == 1
+        assert history["activity"] == {
+            "decisions": 0,
+            "executable_changes": 0,
+            "fills": 0,
+            "below_threshold": 0,
+            "unchanged_targets": 0,
+            "missed_executions": 0,
+            "interventions": 0,
+        }
         active_before_archive_reads = (await client.get("/api/live")).json()["account"]
         archived_history = (await client.get("/api/history", params={"account_id": old_account_id})).json()
         archived_chart = (
@@ -1045,6 +1293,10 @@ async def test_flatten_and_reset_use_confirmed_serialized_controls(tmp_path) -> 
         archive_detail = (await client.get(f"/api/events/{archive_event['id']}")).json()
         active_after_archive_reads = (await client.get("/api/live")).json()["account"]
         assert archived_history["selected_account_id"] == old_account_id
+        assert archived_history["activity"]["decisions"] == 1
+        assert archived_history["activity"]["executable_changes"] == 1
+        assert archived_history["activity"]["fills"] == 2
+        assert archived_history["activity"]["interventions"] == 2
         assert archived_history["comparison"]["account_id"] == old_account_id
         assert len(archived_history["comparison"]["accounts"]) == 2
         assert archived_chart["portfolio"]
@@ -1295,6 +1547,8 @@ async def test_below_threshold_decision_remains_auditable_without_a_fill(tmp_pat
     assert live["activity"]["decisions"] == 1
     assert live["activity"]["below_threshold"] == 1
     assert live["activity"]["fills"] == 0
+    assert live["latest_decision"]["threshold_outcome"] == "below_threshold"
+    assert live["latest_decision"]["execution_status"] == "not_required"
     assert detail["decision"]["threshold_outcome"] == "below_threshold"
     assert detail["decision"]["outcome"] == "below_threshold"
     assert detail["execution"] is None

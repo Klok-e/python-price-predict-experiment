@@ -1415,7 +1415,13 @@ class PaperDashboardApplication:
                 account_snapshot = None
             events = self.store.events(state.account_id)
             material_events = [event for event in events if _is_material_event(event)]
+            recent_trades = sorted(
+                (event for event in events if event.event_type == "InstrumentFilled"),
+                key=lambda event: (event.occurred_at, event.sequence),
+                reverse=True,
+            )[:5]
             activity = self._activity(events)
+            latest_decision = self._latest_decision(events)
             positions = (
                 [
                     {"ticker": ticker, **asdict(position)}
@@ -1489,6 +1495,8 @@ class PaperDashboardApplication:
                 },
                 "positions": positions,
                 "activity": activity,
+                "latest_decision": latest_decision,
+                "decision_blocker": self._decision_blocker(),
                 "freshness": {
                     "status": state.data_status.value,
                     "observed_at": last_observation.isoformat() if last_observation else None,
@@ -1515,6 +1523,7 @@ class PaperDashboardApplication:
                     },
                 },
                 "recent_events": [self._event_summary(event) for event in reversed(material_events[-20:])],
+                "recent_trades": [self._event_summary(event) for event in recent_trades],
             }
 
     def history_snapshot(self, account_id: str | None = None) -> dict[str, Any]:
@@ -1562,12 +1571,12 @@ class PaperDashboardApplication:
                 }
             )
         selected_comparison = next(item for item in comparisons if item["account_id"] == selected)
+        selected_events = self.store.events(selected)
         return {
             "accounts": account_rows,
             "selected_account_id": selected,
-            "events": [
-                self._event_summary(event) for event in self.store.events(selected) if _is_material_event(event)
-            ],
+            "events": [self._event_summary(event) for event in selected_events if _is_material_event(event)],
+            "activity": self._activity(selected_events),
             "protocol_segments": segments_by_account[selected],
             "comparison": {**selected_comparison, "accounts": comparisons},
         }
@@ -1733,12 +1742,17 @@ class PaperDashboardApplication:
                 if event.event_type == "FundingApplied":
                     marker_price = event.payload.get("mark_prices", {}).get(ticker)
                 marker_type = "Signal" if event.event_type == "DecisionRecord" else event.event_type
+                marker_label = (
+                    self._instrument_fill_summary(event)[0]
+                    if event.event_type == "InstrumentFilled"
+                    else _title(marker_type)
+                )
                 markers.append(
                     {
                         "id": event.event_id,
                         "time": event.occurred_at.isoformat(),
                         "type": marker_type,
-                        "label": _title(marker_type),
+                        "label": marker_label,
                         "price": marker_price,
                         "ticker": ticker if event.event_type == "FundingApplied" else event.ticker,
                         "material": True,
@@ -1988,13 +2002,26 @@ class PaperDashboardApplication:
         if sum(abs(weight) for weight in target.values()) > self.config.max_gross_exposure + 1e-6:
             raise ValueError("Target Weights exceed No Leverage")
 
-    def _hold_snapshot(self, marks: Mapping[str, float]) -> dict[str, float] | None:
+    def _hold_snapshot(self, marks: Mapping[str, float]) -> dict[str, float | str | None] | None:
         if self.state.hold_benchmark is None:
             return None
         result = deepcopy(self.state.hold_benchmark).mark(marks)
-        result["excess_pnl"] = self.state.simulation.equity - result["equity"]
-        result["excess_return"] = result["excess_pnl"] / result["starting_equity"]
-        return result
+        excess_pnl = self.state.simulation.equity - result["equity"]
+        return {
+            **result,
+            "excess_pnl": excess_pnl,
+            "excess_return": excess_pnl / result["starting_equity"],
+            "started_at": self._hold_benchmark_started_at(),
+        }
+
+    def _hold_benchmark_started_at(self) -> str | None:
+        revision_start = self.state.revision.get("activated_at")
+        if revision_start is not None:
+            return str(revision_start)
+        for event in reversed(self.store.events(self.state.account_id)):
+            if event.event_type == "PolicyRevision":
+                return event.occurred_at.isoformat()
+        return None
 
     def _is_flat(self) -> bool:
         return all(abs(quantity) <= 1e-12 for quantity in self.state.simulation.quantities.values())
@@ -2025,6 +2052,65 @@ class PaperDashboardApplication:
             "unchanged_targets": sum(event.payload.get("threshold_outcome") == "unchanged" for event in decisions),
             "missed_executions": event_types.count("MissedExecution"),
             "interventions": event_types.count("OperatorIntervention"),
+        }
+
+    def _decision_blocker(self) -> str | None:
+        if self.state.lifecycle is not LifecycleState.TRADING:
+            return "account_not_trading"
+        if self.state.data_status is not DataStatus.FRESH:
+            return "market_data_unavailable"
+        if self._policy_preparing:
+            return "policy_preparing"
+        if self.state.revision.get("status") == "draining":
+            return "revision_draining"
+        if self.state.pending_execution is not None:
+            return "pending_execution"
+        return None
+
+    @staticmethod
+    def _latest_decision(events: list[AccountEvent]) -> dict[str, str] | None:
+        decision = next(
+            (event for event in reversed(events) if event.event_type == "DecisionRecord"),
+            None,
+        )
+        if decision is None or decision.decision_id is None:
+            return None
+
+        related = [event for event in events if event.decision_id == decision.decision_id]
+        completion = next(
+            (event for event in reversed(related) if event.event_type == "DecisionCompleted"),
+            None,
+        )
+        if any(event.event_type == "PortfolioChangeExecuted" for event in related):
+            execution_status = "executed"
+        elif any(event.event_type == "MissedExecution" for event in related):
+            execution_status = "missed"
+        elif completion is not None:
+            if str(completion.payload.get("outcome", "")).startswith("cancelled"):
+                execution_status = "cancelled"
+            else:
+                execution_status = "not_required"
+        elif any(
+            event.sequence > decision.sequence
+            and (
+                event.event_type == "RiskStop"
+                or (
+                    event.event_type == "OperatorIntervention"
+                    and event.payload.get("action") in {"pause", "flatten_and_pause", "manual_reset"}
+                )
+            )
+            for event in events
+        ):
+            execution_status = "cancelled"
+        else:
+            execution_status = "pending"
+
+        return {
+            "event_id": decision.event_id,
+            "decision_id": decision.decision_id,
+            "signal_time": str(decision.payload.get("signal_time", decision.occurred_at.isoformat())),
+            "threshold_outcome": str(decision.payload.get("threshold_outcome", "unknown")),
+            "execution_status": execution_status,
         }
 
     @staticmethod
@@ -2116,11 +2202,14 @@ class PaperDashboardApplication:
 
     def _event_summary(self, event: AccountEvent) -> dict[str, Any]:
         summary = event.event_type
+        title = _title(event.event_type)
+        trade = None
         if event.event_type == "DecisionRecord":
             summary = f"Target turnover {event.payload.get('projected_turnover', 0.0):.2%}"
         elif event.event_type == "InstrumentFilled":
-            summary = f"{event.ticker}: {event.payload.get('quantity', 0.0):.8g}"
-        return {
+            title, trade = self._instrument_fill_summary(event)
+            summary = f"{trade['quantity']:.8g} {event.ticker} at {trade['price']:.8g}; cost {trade['cost']:.8g}"
+        result: dict[str, Any] = {
             "id": event.event_id,
             "type": event.event_type,
             "time": event.occurred_at.isoformat(),
@@ -2128,12 +2217,29 @@ class PaperDashboardApplication:
                 "kyiv": event.occurred_at.astimezone(KYIV_TIME_ZONE).isoformat(),
                 "utc": event.occurred_at.astimezone(UTC).isoformat(),
             },
-            "title": _title(event.event_type),
+            "title": title,
             "summary": summary,
             "ticker": event.ticker,
             "decision_id": event.decision_id,
             "sequence": event.sequence,
         }
+        if trade is not None:
+            result["trade"] = trade
+        return result
+
+    @staticmethod
+    def _instrument_fill_summary(event: AccountEvent) -> tuple[str, dict[str, str | float]]:
+        quantity = float(event.payload["quantity"])
+        effective_fill = float(event.payload["effective_fill"])
+        reference_price = float(event.payload["reference_price"])
+        side = "buy" if quantity > 0.0 else "sell"
+        trade: dict[str, str | float] = {
+            "side": side,
+            "quantity": abs(quantity),
+            "price": effective_fill,
+            "cost": abs(quantity) * abs(effective_fill - reference_price),
+        }
+        return f"{side.title()} {event.ticker}", trade
 
     def _control_availability(self) -> dict[str, bool]:
         lifecycle = self.state.lifecycle
@@ -2312,7 +2418,7 @@ def create_application(
         relative = "index.html" if page in {"", "live", "history", "system"} else page
         candidate = (roots / relative).resolve()
         if candidate.is_relative_to(roots.resolve()) and candidate.is_file():
-            return FileResponse(candidate)
+            return FileResponse(candidate, headers={"Cache-Control": "no-cache"})
         if page in {"", "live", "history", "system"}:
             return HTMLResponse(
                 "<!doctype html><title>Paper Account</title><main><h1>Paper Account</h1>"

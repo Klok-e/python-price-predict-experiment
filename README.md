@@ -38,8 +38,16 @@ uv run netgrowth serve --device cuda
 
 The initial Paper Account starts flat with $10,000. Its cash, positions, pending state, lifecycle,
 model identity, one-minute marks, and append-only history survive process and workstation restarts.
-The dashboard exposes Live, History, and System views. Human actions are limited to Pause, Resume,
-Flatten and Pause, and Manual Reset; there are no manual per-instrument trades.
+The dashboard exposes Live, History, and System views. Live summarizes account value, profit/loss,
+performance versus hold, drawdown, and exposure alongside operating status and the latest decision.
+Recent simulated trades shows the last five executed buys and sells with quantity, execution price,
+and simulated cost; these remain separate from decisions that did not execute a trade.
+Expand Financial details for accounting and risk breakdowns; History holds account-lifetime activity
+totals and a Trades filter for executions, and System holds operational diagnostics. The hold comparison
+is measured from its recorded revision boundary, while account profit/loss and return cover the account lifetime.
+
+Pause or Resume appears beside Account actions, which contains Close all positions and pause and
+Reset account. Each action requires confirmation; there are no manual per-instrument trades.
 
 Open positions remain exposed during downtime. On recovery, the application reconstructs only
 objective one-minute marks and published funding, labels the gap, and never invents decisions or
